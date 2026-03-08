@@ -9,7 +9,7 @@
 <!-- ==================== Links ==================== -->
 <link name="base_link">
   <inertial>
-    <origin xyz="0.018646363702747377 -0.050238963083457974 -0.03448810722272746" rpy="0 0 0"/>
+    <origin xyz="0.005 -0.050238963083457974 -0.03448810722272746" rpy="0 0 0"/>
     <mass value="1.0"/>
     <inertia ixx="0.001662" iyy="0.002900" izz="0.002469" ixy="1.05e-05" iyz="6.5e-06" ixz="0.000109"/>
   </inertial>
@@ -211,16 +211,17 @@
   <origin xyz="-0.045962 0.0285 -0.045962" rpy="0 0 0"/>
   <parent link="left_thigh_link_1"/>
   <child link="left_shank_link_1"/>
-  <axis xyz="0.0 -1.0 0.0"/>
+  <axis xyz="0.0 1.0 0.0"/>
   <limit upper="0.488692" lower="-0.436332" effort="2" velocity="100"/>
 </joint>
 
-<joint name="left_wheel_joint" type="continuous">
+<joint name="left_wheel_joint" type="revolute">
   <origin xyz="0.045962 0.002 -0.045962" rpy="0 0 0"/>
   <parent link="left_shank_link_1"/>
   <child link="left_drive_wheel_link"/>
-  <axis xyz="0.0 -1.0 0.0"/>
+  <axis xyz="0.0 1.0 0.0"/>
   <dynamics damping="0.01" friction="0.0"/>
+  <limit effort="2.0" lower="-10000" upper="10000" velocity="30.0"/>
 </joint>
 
 <joint name="left_idler_wheel_joint" type="fixed">
@@ -234,8 +235,8 @@
   <origin xyz="-0.010958 -0.089778 -0.036464" rpy="0 0 0"/>
   <parent link="base_link"/>
   <child link="right_thigh_link_1"/>
-  <axis xyz="0.0 1.0 0.0"/>
-  <limit lower="-0.4" upper="0.7" effort="2" velocity="100"/>
+  <axis xyz="0.0 -1.0 0.0"/>
+  <limit lower="-0.7" upper="0.4" effort="2" velocity="100"/>
 </joint>
 
 <joint name="right_knee_joint" type="revolute">
@@ -243,15 +244,16 @@
   <parent link="right_thigh_link_1"/>
   <child link="right_shank_link_2"/>
   <axis xyz="0.0 -1.0 0.0"/>
-  <limit upper="0.488692" lower="-0.436332" effort="2" velocity="100"/>
+  <limit lower="-0.488692" upper="0.436332" effort="2" velocity="100"/>
 </joint>
 
-<joint name="right_wheel_joint" type="continuous">
+<joint name="right_wheel_joint" type="revolute">
   <origin xyz="0.045962 -0.002 -0.045962" rpy="0 0 0"/>
   <parent link="right_shank_link_2"/>
   <child link="right_drive_wheel_link"/>
   <axis xyz="0.0 -1.0 0.0"/>
   <dynamics damping="0.01" friction="0.0"/>
+  <limit effort="2.0" lower="-10000" upper="10000" velocity="30.0"/>
 </joint>
 
 <joint name="right_idler_wheel_joint" type="fixed">

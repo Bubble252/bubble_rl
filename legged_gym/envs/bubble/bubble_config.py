@@ -1,8 +1,10 @@
 # ==============================================================================
 # Description: Bubble 双轮足机器人训练配置
-# 基于 Diablo 配置修改，适配 bubble 机器人的关节结构
-# Bubble DOF: left_thigh, left_knee, left_wheel, right_thigh, right_knee, right_wheel (6 DOF)
-# idler_wheel 关节设为 fixed，不参与控制
+# 回归 B2W/Diablo 已验证风格：
+#   - 标准 P 控制 + 轮子 dof_err=0
+#   - only_positive_rewards = True
+#   - 4 命令 (无 jump/knee_angle)
+#   - 精简奖励集
 # ==============================================================================
 
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
@@ -10,66 +12,67 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class BubbleFlatCfg(LeggedRobotCfg):
     class env(LeggedRobotCfg.env):
-        num_envs = 1024  # 1024个环境，适配单机训练资源
-        num_observations = 33  # 3+3+3+3+1(jump)+2(knee_angle)+6+6+6 = 33
-        num_actions = 6  # left/right: thigh, knee, wheel
+        num_envs = 2048           # ↑ 从1024提升，参考 Diablo=2048
+        num_observations = 30     # 3+3+3+3+6+6+6 = 30 (无jump/knee命令)
+        num_actions = 6           # left/right: thigh, knee, wheel
         num_privileged_obs = None
         env_spacing = 3.0
         send_timeouts = True
         episode_length_s = 20
 
     class terrain(LeggedRobotCfg.terrain):
-        mesh_type = "plane"  # 先用平地训练
+        mesh_type = "plane"
         measure_heights = False
         selected = False
         terrain_kwargs = None
 
     class viewer(LeggedRobotCfg.viewer):
         ref_env = 0
-        pos = [0.5, -0.3, 0.4]    # 相机距机器人很近，适配小型机器人(0.16m高)
-        lookat = [0.0, 0.0, 0.1]   # 看向机器人脚部附近
+        pos = [0.5, -0.3, 0.4]
+        lookat = [0.0, 0.0, 0.1]
 
     class init_state(LeggedRobotCfg.init_state):
-        pos = [0.0, 0.0, 0.20]  # x,y,z [m] 站立高度约0.16m，生成时略高一点让机器人自然落地
-        default_joint_angles = {  # = target angles [rad] when action = 0.0
-            "left_thigh_joint": 0.0,     # ↑ -0.2→0.0, 回到垂直，不前倾
-            "left_knee_joint": 0.0,      # ↑ -0.15→0.0, 膝盖伸直=站立最高
+        pos = [0.0, 0.0, 0.20]   # 略高于站立高度让机器人自然落地
+        default_joint_angles = {
+            "left_thigh_joint": 0.0,
+            "left_knee_joint": 0.0,
             "left_wheel_joint": 0.0,
-            "right_thigh_joint": 0.0,    # ↑ -0.2→0.0
-            "right_knee_joint": 0.0,     # ↑ -0.15→0.0
+            "right_thigh_joint": 0.0,
+            "right_knee_joint": 0.0,
             "right_wheel_joint": 0.0,
         }
 
     class control(LeggedRobotCfg.control):
-        # PD Drive parameters:
-        # 腿部: PD 位置控制 (P mode)
-        # 轮子: 直接力矩控制 — 网络输出直接乘以 scale 得到力矩
+        # ===================== 轮子驱动模式选择 =====================
+        # "bubble"  — 油门踏板模式：dof_err=0, 低Kd, action≈力矩方向
+        # "diablo"  — 位置追踪模式：保留dof_err, 高Kp, 角度差产生持续驱动力
+        # "b2w"     — 恒速驱动模式：dof_err=0, dof_vel覆盖为常数, D项恒定推力
+        wheel_drive_mode = "diablo"   # ← 切换这里！
+        wheel_speed = 5.0             # ← 仅 b2w 模式使用，恒定轮速 (rad/s)
+
+        control_type = 'P'
         stiffness = {
             "thigh": 5.0,
             "knee": 5.0,
-            "wheel": 0.0,   # 直接力矩模式不需要 Kp
+            "wheel": 10.0,       # ← 提高！Kp*scale=10*0.25=2.5 > 2.0 N·m 上限
         }  # [N*m/rad]
         damping = {
             "thigh": 0.5,
             "knee": 0.5,
-            "wheel": 0.0,  # 直接力矩模式不需要 Kd
+            "wheel": 0.1,        # ← 降低！减少刹车效应，让轮子自由滚动
         }  # [N*m*s/rad]
-        # action scale: target angle = actionScale * action + defaultAngle (legs)
-        action_scale = 0.5  # 腿部: 每步最大 0.5 rad 位置偏移
-        wheel_action_scale = 2.0  # 轮子: 网络输出 ±1 → 力矩 ±2.0 N·m (直接力矩)
-        wheel_torque_limit = 2.0  # 轮子力矩上限 [N·m]，URDF effort=2
-        # decimation: Number of control action updates @ sim DT per policy DT
-        decimation = 4
+        action_scale = 0.25       # ← B2W 风格，保守一点 (Diablo=0.5)
+        decimation = 2            # ← 100 Hz 策略频率 (dt=0.005, dec=2 → 0.01s)
 
     class asset(LeggedRobotCfg.asset):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/bubble/urdf/bubble.urdf"
         name = "bubble"
-        foot_name = "drive_wheel"  # 匹配 left_drive_wheel_link 和 right_drive_wheel_link，不匹配 idler_wheel
-        penalize_contacts_on = ["base", "thigh", "shank", "idler"]
-        terminate_after_contacts_on = ["base"]  # 只base碰地终止，shank用collision惩罚处理
+        foot_name = "drive_wheel"
+        penalize_contacts_on = ["base", "thigh", "shank", "idler"]  # idler 改为惩罚而非终止
+        terminate_after_contacts_on = ["base", "shank"]  # base 或小腿触地 → 立即终止（防跪）
         flip_visual_attachments = False
-        self_collisions = 0  # 0 = enable
-        replace_cylinder_with_capsule = False  # 保持轮子碰撞体为圆柱体，不替换为胶囊
+        self_collisions = 0
+        replace_cylinder_with_capsule = False  # 保持轮子碰撞体为圆柱
 
     class domain_rand:
         randomize_friction = True
@@ -85,51 +88,47 @@ class BubbleFlatCfg(LeggedRobotCfg):
         soft_dof_vel_limit = 0.9
         soft_torque_limit = 0.9
         max_contact_force = 300.0
-        only_positive_rewards = False  # 关闭正奖励截断，让惩罚信号直接影响策略
-        base_height_target = 0.17  # 腿伸直时更高: base→thigh(0.046)→shank(0.046)→wheel(r≈0.033) + base自身偏移
+        only_positive_rewards = True   # ← 回归！B2W/Diablo 都是 True
+        tracking_sigma = 0.25          # 跟踪奖励 sigma (父类默认)
+        base_height_target = 0.15
 
         class scales(LeggedRobotCfg.rewards.scales):
-            termination = -5.0       # 惩罚死亡
-            tracking_lin_vel = 6.0   # 指数奖励 → 精确跟踪
-            tracking_ang_vel = 1.5
-            lin_vel_z = -2.0         # ↓ 关掉截断后降低惩罚力度
-            ang_vel_xy = -0.5        # ↓ 关掉截断后降低
-            orientation = -2.0       # ↓ 保持水平
-            torques = -0.0001
+            # === 正向奖励 ===
+            tracking_lin_vel = 2.0     # ← 参考 Diablo=2.0
+            tracking_ang_vel = 0.5     # ← 参考 Diablo=0.5
+            no_fly = 1.0               # ← 参考 Diablo=1.0，轮子贴地
+            # === 惩罚项 ===
+            termination = -0.8         # ← 参考 B2W=-0.8
+            lin_vel_z = -1.0           # ← 参考 Diablo=-1.0
+            ang_vel_xy = -0.25         # ← 参考 Diablo=-0.25
+            orientation = -20.0        # ← 大幅增强！pitch=0.26时惩罚从-0.34→-1.35，逼迫站直
+            torques = -0.00001         # ← 参考 Diablo
             dof_vel = 0.0
             dof_acc = 0.0
-            base_height = -10.0      # ↓ 降低避免速死
-            feet_air_time = 0.0
-            collision = -10.0        # ↓ 降低，不再需要绕过截断
-            action_rate = -0.05
+            base_height = -0.5         # ← 参考 B2W=-0.5
+            feet_air_time = 0.0        # 轮式机器人不需要步态奖励
+            collision = -50.0          # ← 大幅提升！跪地碰撞代价极高 (Diablo=-180, 之前-1太弱)
+            action_rate = -0.05        # ← 参考 Diablo=-0.05
             feet_stumble = 0.0
             stand_still = 0.0
             feet_contact_forces = 0.0
-            dof_pos_limits = -0.5
+            dof_pos_limits = -1.0      # ← 参考 Diablo=-1.0
             dof_vel_limits = 0.0
             torque_limits = 0.0
-            no_fly = 2.0             # 轮子贴地奖励
-            no_moonwalk = -0.5
-            stand_symmetric = -2.0   # ↓ 降低
-            encourage_jump = 0.0
-            z_adjust_leg = 0.0
-            wheel_vel_tracking = 3.0  # ↑ 增大轮速跟踪奖励
+            no_moonwalk = -2.0         # ← 参考 Diablo=-2.0，防太空步
 
     class commands(LeggedRobotCfg.commands):
         curriculum = False
         max_curriculum = 2.0
-        num_commands = 7  # lin_vel_x, lin_vel_y, ang_vel_yaw, heading, jump_height, knee_angle(2)
+        num_commands = 4              # ← 回归! lin_vel_x, lin_vel_y, ang_vel_yaw, heading
         resampling_time = 10
-        heading_command = True
-        threshold = 1.0  # 1.0=关闭跳跃和腿长命令（全部置零），先学站稳走路
+        heading_command = False       # ← 关闭！否则会覆盖ang_vel_yaw=0，产生转向命令
 
         class ranges(LeggedRobotCfg.commands.ranges):
-            lin_vel_x = [-0.5, 0.5]  # 先从小速度范围开始
-            lin_vel_y = [0.0, 0.0]  # 双轮足无法侧向移动
-            ang_vel_yaw = [-1.5, 1.5]
+            lin_vel_x = [-1.0, 1.0]   # 扩大速度范围
+            lin_vel_y = [0.0, 0.0]    # 双轮足无侧向
+            ang_vel_yaw = [0.0, 0.0]  # 先不转弯，专注直线
             heading = [-3.14, 3.14]
-            jump_height = [0.05, 0.25]  # 跳跃高度
-            knee_angle = [-0.4, 0.45]  # 膝关节弯曲角度（匹配URDF限位 -0.436~0.489）
 
     class normalization:
         class obs_scales:
@@ -157,17 +156,17 @@ class BubbleFlatCfg(LeggedRobotCfg):
         dt = 0.005
         substeps = 1
         gravity = [0.0, 0.0, -9.81]
-        up_axis = 1  # 0 is y, 1 is z
+        up_axis = 1
 
         class physx:
             num_threads = 10
-            solver_type = 1  # 0: pgs, 1: tgs
+            solver_type = 1
             num_position_iterations = 4
             num_velocity_iterations = 0
             contact_offset = 0.01
             rest_offset = 0.0
             bounce_threshold_velocity = 0.5
-            max_depenetration_velocity = 0.1
+            max_depenetration_velocity = 1.0
             max_gpu_contact_pairs = 2**23
             default_buffer_size_multiplier = 5
             contact_collection = 2
@@ -201,7 +200,7 @@ class BubbleFlatCfgPPO(LeggedRobotCfgPPO):
         policy_class_name = "ActorCritic"
         algorithm_class_name = "PPO"
         num_steps_per_env = 24
-        max_iterations = 3000
+        max_iterations = 1200
 
         save_interval = 50
         experiment_name = "flat_bubble"
