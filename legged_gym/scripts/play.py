@@ -32,6 +32,7 @@ from legged_gym import LEGGED_GYM_ROOT_DIR
 import os
 
 import isaacgym
+from isaacgym import gymapi
 from legged_gym.envs import *
 from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
 
@@ -66,7 +67,8 @@ def play(args):
         print('Exported policy as jit script to: ', path)
 
     logger = Logger(env.dt)
-    robot_index = 0 # which robot is used for logging
+    robot_index = 0 # which robot is used for logging (按 [ ] 切换)
+    num_robots = env.num_envs
     joint_index = 1 # which joint is used for logging
     stop_state_log = 2000 # number of steps before plotting states
     stop_rew_log = env.max_episode_length + 1 # number of steps before print average episode rewards
@@ -74,6 +76,32 @@ def play(args):
     camera_vel = np.array([1., 1., 0.])
     camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
+
+    # 多视角预设（适配 bubble 小型机器人 ~0.16m 高）
+    # [相机偏移x, y, z] 相对于机器人位置
+    camera_presets = [
+        {"name": "side",      "offset": [0.0,  -0.4, 0.15]},  # 侧面平视
+        {"name": "front",     "offset": [0.5,   0.0, 0.15]},  # 正前方
+        {"name": "back",      "offset": [-0.4,  0.0, 0.15]},  # 正后方
+        {"name": "top-close",  "offset": [0.15, -0.15, 0.4]}, # 近距俯视
+        {"name": "overview",  "offset": [0.6,  -0.4, 0.5]},   # 远景概览
+        {"name": "low-angle", "offset": [0.25, -0.2, 0.05]},  # 低角度（几乎贴地）
+    ]
+    cam_preset_idx = 0
+    print(f"\n[Camera] 按 1-6 切换视角 (当前: {camera_presets[cam_preset_idx]['name']})")
+    print(f"  1=侧面  2=正前  3=正后  4=俯视  5=远景  6=低角度")
+    print(f"  [ ] = 切换观察的机器人 (当前: robot {robot_index}/{num_robots-1})")
+    print(f"  IsaacGym自带: 鼠标左键拖拽旋转, 中键平移, 滚轮缩放\n")
+
+    # 注册数字键事件
+    if env.viewer is not None:
+        for key_val, key_name in [(gymapi.KEY_1, "CAM1"), (gymapi.KEY_2, "CAM2"),
+                                   (gymapi.KEY_3, "CAM3"), (gymapi.KEY_4, "CAM4"),
+                                   (gymapi.KEY_5, "CAM5"), (gymapi.KEY_6, "CAM6")]:
+            env.gym.subscribe_viewer_keyboard_event(env.viewer, key_val, key_name)
+        # [ ] 切换观察的机器人
+        env.gym.subscribe_viewer_keyboard_event(env.viewer, gymapi.KEY_LEFT_BRACKET, "PREV_ROBOT")
+        env.gym.subscribe_viewer_keyboard_event(env.viewer, gymapi.KEY_RIGHT_BRACKET, "NEXT_ROBOT")
 
     for i in range(10*int(env.max_episode_length)):
         actions = policy(obs.detach())
@@ -88,11 +116,24 @@ def play(args):
             env.set_camera(camera_position, camera_position + camera_direction)
 
         if SET_CAMERA_FOR_SPECIFIC_ROBOT:
+            # 检查键盘事件切换视角 / 切换机器人
+            if env.viewer is not None:
+                events = env.gym.query_viewer_action_events(env.viewer)
+                for evt in events:
+                    for ci in range(len(camera_presets)):
+                        if evt.action == f"CAM{ci+1}" and evt.value > 0:
+                            cam_preset_idx = ci
+                            print(f"[Camera] 切换到: {camera_presets[cam_preset_idx]['name']}")
+                    if evt.action == "PREV_ROBOT" and evt.value > 0:
+                        robot_index = (robot_index - 1) % num_robots
+                        print(f"[Camera] 观察机器人: {robot_index}/{num_robots-1}")
+                    if evt.action == "NEXT_ROBOT" and evt.value > 0:
+                        robot_index = (robot_index + 1) % num_robots
+                        print(f"[Camera] 观察机器人: {robot_index}/{num_robots-1}")
+
             robot_pos = env.root_states[robot_index, 0:3].cpu().numpy()
-            # d = [5, 5, 3.5]
-            d = [2, 0, 1.5]
-            env.set_camera(robot_pos + d, robot_pos)
-            # SET_CAMERA_FOR_SPECIFIC_ROBOT = False
+            d = camera_presets[cam_preset_idx]["offset"]
+            env.set_camera(robot_pos + np.array(d), robot_pos)
 
         if i < stop_state_log:
             logger.log_states(
@@ -129,6 +170,6 @@ if __name__ == '__main__':
     EXPORT_POLICY = True
     RECORD_FRAMES = False
     MOVE_CAMERA = False
-    SET_CAMERA_FOR_SPECIFIC_ROBOT = False
+    SET_CAMERA_FOR_SPECIFIC_ROBOT = True   # 开启跟随相机
     args = get_args()
     play(args)
