@@ -276,14 +276,23 @@ class Terrain:
             horizontal_scale=self.cfg.horizontal_scale,
         )
         # f(difficulty)生成地形的难度等级
-        slope = difficulty * 0.4
-        step_height = 0.05 + 0.18 * difficulty
-        discrete_obstacles_height = 0.05 + difficulty * 0.2
+        # 支持从 cfg 覆盖缩放因子（适配小型机器人如 Bubble）
+        slope_scale = getattr(self.cfg, 'slope_scale', 0.4)
+        step_height_base = getattr(self.cfg, 'step_height_base', 0.05)
+        step_height_scale = getattr(self.cfg, 'step_height_scale', 0.18)
+        obstacle_height_base = getattr(self.cfg, 'obstacle_height_base', 0.05)
+        obstacle_height_scale = getattr(self.cfg, 'obstacle_height_scale', 0.2)
+        rough_noise_range = getattr(self.cfg, 'rough_noise_range', 0.05)
+        wave_amplitude_scale = getattr(self.cfg, 'wave_amplitude_scale', 0.15)
+
+        slope = difficulty * slope_scale
+        step_height = step_height_base + step_height_scale * difficulty
+        discrete_obstacles_height = obstacle_height_base + obstacle_height_scale * difficulty
         stepping_stones_size = 1.5 * (1.05 - difficulty)
         stone_distance = 0.05 if difficulty == 0 else 0.1
         gap_size = 1.0 * difficulty
         pit_depth = 1.0 * difficulty
-        amp = 0.15 * difficulty
+        amp = wave_amplitude_scale * difficulty
 
         if choice < self.proportions[0]:  # 金字塔斜坡
             if choice < self.proportions[0] / 2:
@@ -297,8 +306,8 @@ class Terrain:
             )
             terrain_utils.random_uniform_terrain(
                 terrain,
-                min_height=-0.05,
-                max_height=0.05,
+                min_height=-rough_noise_range,
+                max_height=rough_noise_range,
                 step=0.005,
                 downsampled_scale=0.2,
             )
@@ -332,7 +341,8 @@ class Terrain:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.0)
         else:  # 坑洞地形 or 波浪地形
             # pit_terrain(terrain, depth=pit_depth, platform_size=4.)
-            terrain_utils.wave_terrain(terrain, num_waves=5.0, amplitude=0.1)
+            wave_amp = getattr(self.cfg, 'wave_amplitude', 0.1)
+            terrain_utils.wave_terrain(terrain, num_waves=5.0, amplitude=wave_amp)
 
         return terrain
 

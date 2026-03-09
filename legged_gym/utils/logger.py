@@ -127,12 +127,11 @@ class Logger:
         if log["wheel_vel_right"]: a.plot(time, f(log["wheel_vel_right"]), label='right wheel')
         a.set(xlabel='time [s]', ylabel='Wheel vel [rad/s]', title='(g) Wheel Velocities (L/R)')
         a.legend()
-        # ★ 新增: 机体线速度 x/y 和角速度 yaw
+        # ★ 新增: 角速度跟踪 (cmd_yaw vs actual_yaw)
         a = axs[3, 1]
-        if log["base_lin_vel_x"]: a.plot(time, f(log["base_lin_vel_x"]), label='vel_x')
-        if log["base_lin_vel_y"]: a.plot(time, f(log["base_lin_vel_y"]), label='vel_y')
-        if log["base_ang_vel_yaw"]: a.plot(time, f(log["base_ang_vel_yaw"]), label='yaw_rate')
-        a.set(xlabel='time [s]', ylabel='Velocity [m/s or rad/s]', title='(h) Base vel_x, vel_y, yaw_rate')
+        if log["command_yaw"]: a.plot(time, log["command_yaw"], '--', label='cmd_yaw', color='r')
+        if log["base_ang_vel_yaw"]: a.plot(time, f(log["base_ang_vel_yaw"]), label='actual_yaw')
+        a.set(xlabel='time [s]', ylabel='Ang vel [rad/s]', title='(h) Yaw Rate Tracking (cmd vs actual)')
         a.legend()
         # ★ 新增: Base Height
         a = axs[4, 0]

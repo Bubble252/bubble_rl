@@ -12,7 +12,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class BubbleFlatCfg(LeggedRobotCfg):
     class env(LeggedRobotCfg.env):
-        num_envs = 2048           # ↑ 从1024提升，参考 Diablo=2048
+        num_envs = 2048           # ← Phase2: 地形训练需要更多并行环境 (2048→4096)
         num_observations = 150    # 30 + 10*6(dof_pos_err) + 10*6(dof_vel) = 150
         num_actions = 6           # left/right: thigh, knee, wheel
         num_privileged_obs = None
@@ -23,10 +23,26 @@ class BubbleFlatCfg(LeggedRobotCfg):
         joint_state_history_length = 10     # ← 前 10 帧
 
     class terrain(LeggedRobotCfg.terrain):
-        mesh_type = "plane"
-        measure_heights = False
+        # ===================== Phase 2: 轻度地形 =====================
+        mesh_type = "trimesh"          # ← plane → trimesh
+        measure_heights = False        # ← 纯本体感知，不用地形高度观测
+        curriculum = True              # ← 课程学习：从易到难
+        max_init_terrain_level = 3     # ← 起始最高难度级别（保守）
         selected = False
         terrain_kwargs = None
+        # 地形类型分布: [smooth slope, rough slope, stairs up, stairs down, discrete]
+        terrain_proportions = [0.4, 0.4, 0.0, 0.0, 0.2]  # ← 仅斜坡+少量离散障碍，无台阶
+        # ===== Bubble 专属地形缩放（轮径仅 0.063m，力矩仅 2Nm）=====
+        slope_scale = 0.15             # ← 最大坡度 ~8.5° (默认0.4→22°太陡)
+        step_height_base = 0.01        # ← 最小台阶 1cm (默认5cm)
+        step_height_scale = 0.05       # ← 最大台阶 ~6cm (默认18cm)
+        obstacle_height_base = 0.01    # ← 最小障碍 1cm
+        obstacle_height_scale = 0.04   # ← 最大障碍 ~5cm (< 轮径)
+        rough_noise_range = 0.02       # ← 粗糙噪声 ±2cm (默认±5cm)
+        wave_amplitude = 0.03          # ← 波浪幅度 3cm (默认10cm)
+        wave_amplitude_scale = 0.05    # ← 渐进波浪振幅缩放
+        add_perlin_noise = False       # ← 不加柏林噪声（Phase 2 暂不需要）
+        track_test = False             # ← 不使用跑道测试模式
 
     class viewer(LeggedRobotCfg.viewer):
         ref_env = 0
@@ -78,11 +94,11 @@ class BubbleFlatCfg(LeggedRobotCfg):
 
     class domain_rand:
         randomize_friction = True
-        friction_range = [0.5, 1.25]
-        randomize_base_mass = False
-        added_mass_range = [-1.0, 1.0]
+        friction_range = [0.3, 1.5]    # ← Phase2: 扩大摩擦范围，适应不同地面 (0.5~1.25→0.3~1.5)
+        randomize_base_mass = True     # ← Phase2: 开启质量随机化，提高鲁棒性
+        added_mass_range = [-0.2, 0.3] # ← Bubble 仅 2.17kg，不能加太多
         push_robots = True
-        push_interval_s = 15
+        push_interval_s = 12           # ← Phase2: 稍微频繁推一下 (15→12)
         max_push_vel_xy = 1.0
 
     class rewards(LeggedRobotCfg.rewards):
@@ -90,7 +106,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
         soft_dof_vel_limit = 0.9
         soft_torque_limit = 0.9
         max_contact_force = 300.0
-        only_positive_rewards = True   # ← 回归！B2W/Diablo 都是 True
+        only_positive_rewards = False  # ← Phase2: 地形训练需要惩罚信号 (True→False)
         tracking_sigma = 0.15          # ← 缩小sigma，提高跟踪精度 (0.25→0.15)
         base_height_target = 0.15      # ← 顺应物理最优高度 (0.15→0.17)改回去了
 
@@ -103,7 +119,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
             termination = -0.8         # ← 参考 B2W=-0.8
             lin_vel_z = -1.0           # ← 参考 Diablo=-1.0
             ang_vel_xy = -0.5          # ← 抑制 pitch 角速度
-            orientation = -20.0        # ← 逼迫站直
+            orientation = -5.0         # ← Phase2: 放松姿态约束，斜坡上无法保持水平 (-10→-5)
             torques = -0.00001         # ← 参考 Diablo
             dof_vel = 0.0              # ← 不惩罚，靠物理阻尼解决
             dof_acc = 0.0
@@ -112,6 +128,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
             collision = -50.0
             action_rate = -0.3         # ← 适当放松，物理阻尼已够 (0.5→0.3)
             feet_stumble = 0.0
+            stumble = -0.5             # ← Phase2: 惩罚绊倒，地形上很重要
             stand_still = 0.0
             feet_contact_forces = 0.0
             dof_pos_limits = -1.0      # ← 参考 Diablo=-1.0
@@ -125,12 +142,12 @@ class BubbleFlatCfg(LeggedRobotCfg):
         max_curriculum = 2.0
         num_commands = 4              # ← 回归! lin_vel_x, lin_vel_y, ang_vel_yaw, heading
         resampling_time = 10
-        heading_command = False       # ← 关闭！否则会覆盖ang_vel_yaw=0，产生转向命令
+        heading_command = True        # ← 开启！从heading误差计算ang_vel_yaw命令
 
         class ranges(LeggedRobotCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]   # 扩大速度范围
             lin_vel_y = [0.0, 0.0]    # 双轮足无侧向
-            ang_vel_yaw = [0.0, 0.0]  # 先不转弯，专注直线
+            ang_vel_yaw = [-1.0, 1.0]  # ← Phase1: 开启转弯
             heading = [-3.14, 3.14]
 
     class normalization:
@@ -203,7 +220,7 @@ class BubbleFlatCfgPPO(LeggedRobotCfgPPO):
         policy_class_name = "ActorCritic"
         algorithm_class_name = "PPO"
         num_steps_per_env = 24
-        max_iterations = 1200
+        max_iterations = 2000         # ← Phase2: 地形训练需要更多迭代 (1200→2000)
 
         save_interval = 50
         experiment_name = "flat_bubble"
