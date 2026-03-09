@@ -91,12 +91,12 @@ class BubbleFlatCfg(LeggedRobotCfg):
         soft_torque_limit = 0.9
         max_contact_force = 300.0
         only_positive_rewards = True   # ← 回归！B2W/Diablo 都是 True
-        tracking_sigma = 0.25          # 跟踪奖励 sigma (父类默认)
-        base_height_target = 0.15      # ← 目标：尽可能站高 (理论最高≈0.16m)
+        tracking_sigma = 0.15          # ← 缩小sigma，提高跟踪精度 (0.25→0.15)
+        base_height_target = 0.15      # ← 顺应物理最优高度 (0.15→0.17)改回去了
 
         class scales(LeggedRobotCfg.rewards.scales):
             # === 正向奖励 ===
-            tracking_lin_vel = 2.0     # ← 参考 Diablo=2.0
+            tracking_lin_vel = 3.0     # ← 提高跟踪权重 (2.0→3.0)
             tracking_ang_vel = 0.5     # ← 参考 Diablo=0.5
             no_fly = 1.0               # ← 参考 Diablo=1.0，轮子贴地
             # === 惩罚项 ===
