@@ -30,18 +30,31 @@ class Bubble(LeggedRobot):
     """
 
     def _reward_base_height(self):
-        """重载: 用线性惩罚替代平方惩罚。
-        平方惩罚问题：(0.148-0.12)^2 = 0.0008，太弱！
-        线性惩罚：|0.148-0.12| = 0.028，有效 10 倍以上。
+        """重载: 指数型高度奖励——越接近目标越好。
+        exp(-40 * error^2): 
+          error=0    → reward=1.0 (满分)
+          error=0.01 → reward=0.96
+          error=0.02 → reward=0.85
+          error=0.05 → reward=0.37
+          error=0.10 → reward=0.02 (几乎为零)
+        配合 scales.base_height > 0 使用（正向奖励）。
         """
         base_height = self.root_states[:, 2]
-        return torch.abs(base_height - self.cfg.rewards.base_height_target)
+        error = base_height - self.cfg.rewards.base_height_target
+        return torch.exp(-40.0 * error ** 2)
 
     def _reward_no_fly(self):
         """奖励双轮保持与地面接触"""
         contacts = self.contact_forces[:, self.feet_indices, 2] > 0.1
         rew = 1.0 * (torch.sum(1.0 * contacts, dim=1) == 2)
         return rew
+
+    def _reward_wheel_vel(self):
+        """只惩罚轮子速度（不影响腿部），防止轮子空转。
+        返回 mean(wheel_vel²)，配合负权重使用。
+        """
+        wheel_vel = self.dof_vel[:, self.wheel_indices]  # (N, 2)
+        return torch.sum(wheel_vel ** 2, dim=1)
 
     def _reward_no_moonwalk(self):
         """惩罚左右腿不对称（"太空步"），参考 Diablo"""
@@ -141,6 +154,19 @@ class Bubble(LeggedRobot):
         print(f"[Bubble] ★ Wheel torque limits overridden to 2.0 N·m")
         print(f"[Bubble] ★ Wheel drive mode: {self.cfg.control.wheel_drive_mode}")
 
+        # ★ 关节状态历史 buffer（参考 Diablo）
+        if getattr(self.cfg.env, 'enable_joint_state_history', False):
+            hist_len = self.cfg.env.joint_state_history_length
+            self.dof_pos_error_history = torch.zeros(
+                self.num_envs, hist_len, self.num_actions,
+                dtype=torch.float, device=self.device, requires_grad=False,
+            )
+            self.dof_vel_history = torch.zeros(
+                self.num_envs, hist_len, self.num_actions,
+                dtype=torch.float, device=self.device, requires_grad=False,
+            )
+            print(f"[Bubble] ★ Joint state history enabled: {hist_len} frames × {self.num_actions} DOFs = {hist_len * self.num_actions * 2} extra obs dims")
+
         print(f"[Bubble] Wheel DOF indices: {self.wheel_indices.tolist()}")
         print(f"[Bubble] DOF names: {self.dof_names}")
         print(f"[Bubble] Torque limits: {self.torque_limits}")
@@ -156,6 +182,7 @@ class Bubble(LeggedRobot):
         "diablo"         — 保留轮子 dof_pos (网络需要看到轮子角度来做位置追踪)
 
         布局: lin_vel(3) + ang_vel(3) + gravity(3) + commands(3) + dof_pos(6) + dof_vel(6) + actions(6) = 30
+        若启用 history: + dof_pos_err_history(10*6=60) + dof_vel_history(10*6=60) = 150
         """
         mode = self.cfg.control.wheel_drive_mode
 
@@ -178,6 +205,17 @@ class Bubble(LeggedRobot):
             dim=-1,
         )  # 总维度: 30
 
+        # ★ 拼接关节状态历史（参考 Diablo）
+        if getattr(self.cfg.env, 'enable_joint_state_history', False):
+            self.obs_buf = torch.cat(
+                (
+                    self.obs_buf,
+                    self.dof_pos_error_history.view(self.num_envs, -1) * self.obs_scales.dof_pos,   # 10*6=60
+                    self.dof_vel_history.view(self.num_envs, -1) * self.obs_scales.dof_vel,         # 10*6=60
+                ),
+                dim=-1,
+            )  # 总维度: 150
+
         # add perceptive inputs if not blind
         if self.cfg.terrain.measure_heights:
             heights = (
@@ -197,7 +235,7 @@ class Bubble(LeggedRobot):
             ) * self.noise_scale_vec
 
     def _get_noise_scale_vec(self, cfg):
-        """噪声向量，与 30 维观测对齐"""
+        """噪声向量，与观测维度对齐（30 或 150）"""
         noise_vec = torch.zeros_like(self.obs_buf[0])
         self.add_noise = self.cfg.noise.add_noise
         noise_scales = self.cfg.noise.noise_scales
@@ -211,8 +249,20 @@ class Bubble(LeggedRobot):
         noise_vec[18:24] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel    # dof_vel
         noise_vec[24:30] = 0.0                                                              # actions
 
+        # ★ 关节状态历史噪声（参考 Diablo）
+        if getattr(self.cfg.env, 'enable_joint_state_history', False):
+            hist_len = self.cfg.env.joint_state_history_length
+            n_dof = self.num_actions  # 6
+            # dof_pos_error history: [30 : 30+60]
+            noise_vec[30:30 + hist_len * n_dof] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
+            # dof_vel history: [90 : 90+60]
+            noise_vec[30 + hist_len * n_dof:30 + 2 * hist_len * n_dof] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
+
         if self.cfg.terrain.measure_heights:
-            noise_vec[30:] = (
+            base_idx = 30
+            if getattr(self.cfg.env, 'enable_joint_state_history', False):
+                base_idx = 150
+            noise_vec[base_idx:] = (
                 noise_scales.height_measurements
                 * noise_level
                 * self.obs_scales.height_measurements
@@ -241,8 +291,21 @@ class Bubble(LeggedRobot):
         self._diag_count = torch.zeros(n, device=dev)
 
     def post_physics_step(self):
-        """重写: 每步累计诊断指标，reset 时写入 extras 供 TensorBoard 记录"""
+        """重写: 每步累计诊断指标 + 更新关节状态历史"""
         super().post_physics_step()
+
+        # ★ 关节状态历史滑动窗口更新（参考 Diablo）
+        if getattr(self.cfg.env, 'enable_joint_state_history', False):
+            mode = self.cfg.control.wheel_drive_mode
+            # 位置误差 history（与观测一致：bubble/b2w 轮子清零）
+            dof_pos_err = (self.dof_pos - self.default_dof_pos).clone()
+            if mode != "diablo":
+                dof_pos_err[:, self.wheel_indices] = 0
+            self.dof_pos_error_history = torch.roll(self.dof_pos_error_history, shifts=-1, dims=1)
+            self.dof_pos_error_history[:, -1, :] = dof_pos_err
+            # 速度 history
+            self.dof_vel_history = torch.roll(self.dof_vel_history, shifts=-1, dims=1)
+            self.dof_vel_history[:, -1, :] = self.dof_vel
 
         # 第一次调用时初始化
         if not hasattr(self, '_diag_sums'):
@@ -265,7 +328,7 @@ class Bubble(LeggedRobot):
             self._diag_count += 1
 
     def reset_idx(self, env_ids):
-        """重写: reset 后把诊断均值写入 extras['episode'] 供 TensorBoard 记录"""
+        """重写: reset 后把诊断均值写入 extras['episode'] + 清零关节历史"""
         if len(env_ids) > 0 and hasattr(self, '_diag_sums'):
             # 先保存诊断值（super 会清空 extras["episode"]）
             diag_snapshot = {}
@@ -284,3 +347,8 @@ class Bubble(LeggedRobot):
             self.extras["episode"].update(diag_snapshot)
         else:
             super().reset_idx(env_ids)
+
+        # ★ 清零关节状态历史（参考 Diablo）
+        if getattr(self.cfg.env, 'enable_joint_state_history', False) and len(env_ids) > 0:
+            self.dof_pos_error_history[env_ids].zero_()
+            self.dof_vel_history[env_ids].zero_()

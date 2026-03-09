@@ -13,12 +13,14 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 class BubbleFlatCfg(LeggedRobotCfg):
     class env(LeggedRobotCfg.env):
         num_envs = 2048           # ↑ 从1024提升，参考 Diablo=2048
-        num_observations = 30     # 3+3+3+3+6+6+6 = 30 (无jump/knee命令)
+        num_observations = 150    # 30 + 10*6(dof_pos_err) + 10*6(dof_vel) = 150
         num_actions = 6           # left/right: thigh, knee, wheel
         num_privileged_obs = None
         env_spacing = 3.0
         send_timeouts = True
         episode_length_s = 20
+        enable_joint_state_history = True   # ← 关节状态历史，参考 Diablo
+        joint_state_history_length = 10     # ← 前 10 帧
 
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = "plane"
@@ -47,22 +49,22 @@ class BubbleFlatCfg(LeggedRobotCfg):
         # "bubble"  — 油门踏板模式：dof_err=0, 低Kd, action≈力矩方向
         # "diablo"  — 位置追踪模式：保留dof_err, 高Kp, 角度差产生持续驱动力
         # "b2w"     — 恒速驱动模式：dof_err=0, dof_vel覆盖为常数, D项恒定推力
-        wheel_drive_mode = "diablo"   # ← 切换这里！
-        wheel_speed = 5.0             # ← 仅 b2w 模式使用，恒定轮速 (rad/s)
+        wheel_drive_mode = "b2w"      # ← 切换这里！
+        wheel_speed = 3.0             # ← b2w 模式：恒定推力 = Kd × wheel_speed = 0.3 N·m (降低推力减少空转)
 
         control_type = 'P'
         stiffness = {
-            "thigh": 5.0,
-            "knee": 5.0,
-            "wheel": 10.0,       # ← 提高！Kp*scale=10*0.25=2.5 > 2.0 N·m 上限
+            "thigh": 3.0,            # ← 降低刚度，减少过冲 (5→3)
+            "knee": 3.0,             # ← 同上
+            "wheel": 4.0,
         }  # [N*m/rad]
         damping = {
-            "thigh": 0.5,
-            "knee": 0.5,
-            "wheel": 0.1,        # ← 降低！减少刹车效应，让轮子自由滚动
+            "thigh": 1.0,            # ← 加倍阻尼，抑制振荡 (0.5→1.0)
+            "knee": 1.0,             # ← 同上
+            "wheel": 0.1,
         }  # [N*m*s/rad]
-        action_scale = 0.25       # ← B2W 风格，保守一点 (Diablo=0.5)
-        decimation = 2            # ← 100 Hz 策略频率 (dt=0.005, dec=2 → 0.01s)
+        action_scale = 0.15       # ← 限制单步最大调整幅度 (0.25→0.15)
+        decimation = 2            # ← 100 Hz 策略频率 
 
     class asset(LeggedRobotCfg.asset):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/bubble/urdf/bubble.urdf"
@@ -90,7 +92,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
         max_contact_force = 300.0
         only_positive_rewards = True   # ← 回归！B2W/Diablo 都是 True
         tracking_sigma = 0.25          # 跟踪奖励 sigma (父类默认)
-        base_height_target = 0.15
+        base_height_target = 0.15      # ← 目标：尽可能站高 (理论最高≈0.16m)
 
         class scales(LeggedRobotCfg.rewards.scales):
             # === 正向奖励 ===
@@ -100,15 +102,15 @@ class BubbleFlatCfg(LeggedRobotCfg):
             # === 惩罚项 ===
             termination = -0.8         # ← 参考 B2W=-0.8
             lin_vel_z = -1.0           # ← 参考 Diablo=-1.0
-            ang_vel_xy = -0.25         # ← 参考 Diablo=-0.25
-            orientation = -20.0        # ← 大幅增强！pitch=0.26时惩罚从-0.34→-1.35，逼迫站直
+            ang_vel_xy = -0.5          # ← 抑制 pitch 角速度
+            orientation = -20.0        # ← 逼迫站直
             torques = -0.00001         # ← 参考 Diablo
-            dof_vel = 0.0
+            dof_vel = 0.0              # ← 不惩罚，靠物理阻尼解决
             dof_acc = 0.0
-            base_height = -0.5         # ← 参考 B2W=-0.5
-            feet_air_time = 0.0        # 轮式机器人不需要步态奖励
-            collision = -50.0          # ← 大幅提升！跪地碰撞代价极高 (Diablo=-180, 之前-1太弱)
-            action_rate = -0.05        # ← 参考 Diablo=-0.05
+            base_height = 1.5          # ← 正向奖励 exp(-40*err²)
+            feet_air_time = 0.0
+            collision = -50.0
+            action_rate = -0.3         # ← 适当放松，物理阻尼已够 (0.5→0.3)
             feet_stumble = 0.0
             stand_still = 0.0
             feet_contact_forces = 0.0
@@ -116,6 +118,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
             dof_vel_limits = 0.0
             torque_limits = 0.0
             no_moonwalk = -2.0         # ← 参考 Diablo=-2.0，防太空步
+            wheel_vel = -0.0005        # ← 惩罚轮速过大
 
     class commands(LeggedRobotCfg.commands):
         curriculum = False

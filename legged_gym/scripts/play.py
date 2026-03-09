@@ -136,6 +136,9 @@ def play(args):
             env.set_camera(robot_pos + np.array(d), robot_pos)
 
         if i < stop_state_log:
+            # 左右轮索引
+            wl = env.wheel_indices[0].item()  # left_wheel
+            wr = env.wheel_indices[1].item()  # right_wheel
             logger.log_states(
                 {
                     'dof_pos_target': actions[robot_index, joint_index].item() * env.cfg.control.action_scale,
@@ -151,9 +154,17 @@ def play(args):
                     'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
                     'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy(),
                     'base_height': env.root_states[robot_index, 2].item(),
-                    # 'command_base_height': env.commands[robot_index, 4].item(),
-                    # 'knee_angle': env.theta_right[robot_index].item(),
-                    # 'command_knee_angle': env.commands[robot_index, 5].item(),
+                    'base_height_target': env.cfg.rewards.base_height_target,
+                    # ★ 新增：左右轮速度
+                    'wheel_vel_left': env.dof_vel[robot_index, wl].item(),
+                    'wheel_vel_right': env.dof_vel[robot_index, wr].item(),
+                    # ★ 新增：机体线速度 x/y 和角速度 yaw
+                    'base_lin_vel_x': env.base_lin_vel[robot_index, 0].item(),
+                    'base_lin_vel_y': env.base_lin_vel[robot_index, 1].item(),
+                    'base_ang_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
+                    # ★ 新增：pitch 和 roll 角度（从 projected_gravity 反算）
+                    'pitch': torch.atan2(env.projected_gravity[robot_index, 0], -env.projected_gravity[robot_index, 2]).item(),
+                    'roll': torch.atan2(env.projected_gravity[robot_index, 1], -env.projected_gravity[robot_index, 2]).item(),
                 }
             )
         elif i==stop_state_log:

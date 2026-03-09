@@ -78,9 +78,9 @@ class Logger:
         plt.show()
 
     def _plot_6(self):
-        nb_rows = 3
+        nb_rows = 6
         nb_cols = 2
-        fig, axs = plt.subplots(nb_rows, nb_cols)
+        fig, axs = plt.subplots(nb_rows, nb_cols, figsize=(14, 18))
         for key, value in self.state_log.items():
             time = np.linspace(0, len(value)*self.dt, len(value))
             break
@@ -121,6 +121,49 @@ class Logger:
         if log["dof_torque"]!=[]: a.plot(time, f(log["dof_torque"]), label='measured')
         a.set(xlabel='time [s]', ylabel='Joint Torque [Nm]', title='(f) Torque')
         a.legend()
+        # ★ 新增: 左右轮速度
+        a = axs[3, 0]
+        if log["wheel_vel_left"]: a.plot(time, f(log["wheel_vel_left"]), label='left wheel')
+        if log["wheel_vel_right"]: a.plot(time, f(log["wheel_vel_right"]), label='right wheel')
+        a.set(xlabel='time [s]', ylabel='Wheel vel [rad/s]', title='(g) Wheel Velocities (L/R)')
+        a.legend()
+        # ★ 新增: 机体线速度 x/y 和角速度 yaw
+        a = axs[3, 1]
+        if log["base_lin_vel_x"]: a.plot(time, f(log["base_lin_vel_x"]), label='vel_x')
+        if log["base_lin_vel_y"]: a.plot(time, f(log["base_lin_vel_y"]), label='vel_y')
+        if log["base_ang_vel_yaw"]: a.plot(time, f(log["base_ang_vel_yaw"]), label='yaw_rate')
+        a.set(xlabel='time [s]', ylabel='Velocity [m/s or rad/s]', title='(h) Base vel_x, vel_y, yaw_rate')
+        a.legend()
+        # ★ 新增: Base Height
+        a = axs[4, 0]
+        if log["base_height"]: a.plot(time, f(log["base_height"]), label='measured')
+        # 画 target 参考线（从 config 读到的 base_height_target）
+        if log["base_height_target"]:
+            a.plot(time, log["base_height_target"], '--', label='target', color='r')
+        elif log["base_height"]:
+            # 如果没有 target 序列，至少画常数线
+            pass
+        a.set(xlabel='time [s]', ylabel='Height [m]', title='(i) Base Height')
+        a.legend()
+        # ★ 新增: command_x vs actual vel_x 对比
+        a = axs[4, 1]
+        if log["command_x"]: a.plot(time, log["command_x"], '--', label='cmd_vx', color='r')
+        if log["base_vel_x"]: a.plot(time, f(log["base_vel_x"]), label='actual_vx')
+        a.set(xlabel='time [s]', ylabel='Velocity [m/s]', title='(j) Velocity Tracking (cmd vs actual)')
+        a.legend()
+        # ★ 新增: Pitch 角度
+        a = axs[5, 0]
+        if log["pitch"]: a.plot(time, f(log["pitch"]), label='pitch', color='blue')
+        a.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+        a.set(xlabel='time [s]', ylabel='Angle [rad]', title='(k) Pitch')
+        a.legend()
+        # ★ 新增: Roll 角度
+        a = axs[5, 1]
+        if log["roll"]: a.plot(time, f(log["roll"]), label='roll', color='orange')
+        a.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+        a.set(xlabel='time [s]', ylabel='Angle [rad]', title='(l) Roll')
+        a.legend()
+        plt.tight_layout()
         plt.show()
 
     def _plot(self):
