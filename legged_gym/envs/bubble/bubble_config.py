@@ -107,7 +107,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
             torques = -0.00001         # ← 参考 Diablo
             dof_vel = 0.0              # ← 不惩罚，靠物理阻尼解决
             dof_acc = 0.0
-            base_height = 1.5          # ← 正向奖励 exp(-40*err²)
+            base_height = 0          # ← 正向奖励 exp(-40*err²)
             feet_air_time = 0.0
             collision = -50.0
             action_rate = -0.3         # ← 适当放松，物理阻尼已够 (0.5→0.3)
