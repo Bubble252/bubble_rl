@@ -125,8 +125,8 @@ class Bubble(LeggedRobot):
     def _reset_dofs(self, env_ids):
         """重写: 默认角度全为0时, 父类 0*rand=0 没有随机化探索。
         改为 default + rand 而非 default * rand。"""
-        # 加性随机化: 在默认角度基础上 ±0.1 rad
-        self.dof_pos[env_ids] = self.default_dof_pos + torch_rand_float(-0.1, 0.1, 
+        # 加性随机化: 在默认角度基础上 ±0.05 rad (0.5Nm电机弱，不能偏太多)
+        self.dof_pos[env_ids] = self.default_dof_pos + torch_rand_float(-0.05, 0.05, 
             (len(env_ids), self.num_dof), device=self.device)
         # 轮子角度随机无意义，清零
         self.dof_pos[env_ids, self.wheel_indices[0]] = 0.
@@ -150,8 +150,8 @@ class Bubble(LeggedRobot):
 
         # ★ 关键：continuous 关节在 URDF 没有 effort limit，IsaacGym 读到 inf
         #   必须手动覆盖为真实电机力矩上限 (2 N·m)
-        self.torque_limits[self.wheel_indices] = 2.0
-        print(f"[Bubble] ★ Wheel torque limits overridden to 2.0 N·m")
+        self.torque_limits[self.wheel_indices] = 0.5
+        print(f"[Bubble] ★ Wheel torque limits overridden to 0.5 N·m")
         print(f"[Bubble] ★ Wheel drive mode: {self.cfg.control.wheel_drive_mode}")
 
         # ★ 关节状态历史 buffer（参考 Diablo）

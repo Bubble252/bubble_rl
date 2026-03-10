@@ -165,6 +165,8 @@ def play(args):
                     # ★ 新增：pitch 和 roll 角度（从 projected_gravity 反算）
                     'pitch': torch.atan2(env.projected_gravity[robot_index, 0], -env.projected_gravity[robot_index, 2]).item(),
                     'roll': torch.atan2(env.projected_gravity[robot_index, 1], -env.projected_gravity[robot_index, 2]).item(),
+                    # ★ 新增：碰撞统计（逐body）
+                    'collision_per_body': (torch.norm(env.contact_forces[robot_index, env.penalised_contact_indices, :], dim=-1) > 0.1).float().cpu().numpy(),
                 }
             )
         elif i==stop_state_log:

@@ -78,9 +78,9 @@ class Logger:
         plt.show()
 
     def _plot_6(self):
-        nb_rows = 6
+        nb_rows = 7
         nb_cols = 2
-        fig, axs = plt.subplots(nb_rows, nb_cols, figsize=(14, 18))
+        fig, axs = plt.subplots(nb_rows, nb_cols, figsize=(14, 21))
         for key, value in self.state_log.items():
             time = np.linspace(0, len(value)*self.dt, len(value))
             break
@@ -162,6 +162,34 @@ class Logger:
         a.axhline(y=0, color='r', linestyle='--', alpha=0.5)
         a.set(xlabel='time [s]', ylabel='Angle [rad]', title='(l) Roll')
         a.legend()
+        # ★ 新增: 逐body碰撞时间线
+        a = axs[6, 0]
+        if log["collision_per_body"]:
+            coll = np.array(log["collision_per_body"])  # (T, num_penalized_bodies)
+            body_labels = ['base', 'L_thigh', 'R_thigh', 'L_shank', 'R_shank', 'L_idler', 'R_idler']
+            n_bodies = coll.shape[1]
+            # 动态截断/补充标签以匹配实际 body 数量
+            if n_bodies <= len(body_labels):
+                labels = body_labels[:n_bodies]
+            else:
+                labels = body_labels + [f'body_{i}' for i in range(len(body_labels), n_bodies)]
+            for bi in range(n_bodies):
+                # 上移避免重叠: body_i 在 y=i 处画 0/1
+                a.fill_between(time, bi, bi + coll[:, bi], alpha=0.5, label=labels[bi])
+            a.set(xlabel='time [s]', ylabel='Body index', title='(m) Collision per Body')
+            a.set_yticks(range(n_bodies))
+            a.set_yticklabels(labels)
+            a.legend(loc='upper right', fontsize=7)
+        # ★ 新增: 碰撞总数随时间
+        a = axs[6, 1]
+        if log["collision_per_body"]:
+            coll = np.array(log["collision_per_body"])
+            total_coll = coll.sum(axis=1)
+            a.plot(time, total_coll, label='total collisions', color='red')
+            a.set(xlabel='time [s]', ylabel='Count', title='(n) Total Collision Count per Step')
+            avg = np.mean(total_coll)
+            a.axhline(y=avg, color='gray', linestyle='--', alpha=0.7, label=f'avg={avg:.2f}')
+            a.legend()
         plt.tight_layout()
         plt.show()
 

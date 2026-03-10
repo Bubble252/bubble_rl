@@ -10,8 +10,8 @@
 <link name="base_link">
   <inertial>
     <origin xyz="0.005 -0.050238963083457974 -0.03448810722272746" rpy="0 0 0"/>
-    <mass value="1.0"/>
-    <inertia ixx="0.001662" iyy="0.002900" izz="0.002469" ixy="1.05e-05" iyz="6.5e-06" ixz="0.000109"/>
+    <mass value="0.7"/>
+    <inertia ixx="0.001163" iyy="0.002030" izz="0.001728" ixy="7.35e-06" iyz="4.55e-06" ixz="7.63e-05"/>
   </inertial>
   <visual>
     <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -31,8 +31,8 @@
 <link name="left_thigh_link_1">
   <inertial>
     <origin xyz="-0.007841796871332999 0.02165217168425637 -0.0059609659700569015" rpy="0 0 0"/>
-    <mass value="0.3"/>
-    <inertia ixx="0.000198" iyy="0.000285" izz="0.000218" ixy="1.08e-05" iyz="1.31e-05" ixz="-4.89e-05"/>
+    <mass value="0.21"/>
+    <inertia ixx="0.000139" iyy="0.000200" izz="0.000153" ixy="7.56e-06" iyz="9.17e-06" ixz="-3.42e-05"/>
   </inertial>
   <visual>
     <origin xyz="0.010958 0.009778 0.036464" rpy="0 0 0"/>
@@ -52,8 +52,8 @@
 <link name="right_thigh_link_1">
   <inertial>
     <origin xyz="-0.007841714275215685 -0.02165293135789087 -0.005960949248683539" rpy="0 0 0"/>
-    <mass value="0.3"/>
-    <inertia ixx="0.000198" iyy="0.000285" izz="0.000218" ixy="-1.08e-05" iyz="-1.31e-05" ixz="-4.89e-05"/>
+    <mass value="0.21"/>
+    <inertia ixx="0.000139" iyy="0.000200" izz="0.000153" ixy="-7.56e-06" iyz="-9.17e-06" ixz="-3.42e-05"/>
   </inertial>
   <visual>
     <origin xyz="0.010958 0.089778 0.036464" rpy="0 0 0"/>
@@ -204,8 +204,8 @@
   <parent link="base_link"/>
   <child link="left_thigh_link_1"/>
   <axis xyz="0.0 1.0 0.0"/>
-  <dynamics damping="0.3" friction="0.05"/>
-  <limit lower="-0.4" upper="0.7" effort="2" velocity="100"/>
+  <dynamics damping="0.02" friction="0.05"/>
+  <limit lower="-0.4" upper="0.7" effort="0.5" velocity="100"/>
 </joint>
 
 <joint name="left_knee_joint" type="revolute">
@@ -213,8 +213,8 @@
   <parent link="left_thigh_link_1"/>
   <child link="left_shank_link_1"/>
   <axis xyz="0.0 1.0 0.0"/>
-  <dynamics damping="0.3" friction="0.05"/>
-  <limit upper="0.488692" lower="-0.436332" effort="2" velocity="100"/>
+  <dynamics damping="0.02" friction="0.05"/>
+  <limit upper="0.488692" lower="-0.436332" effort="0.5" velocity="100"/>
 </joint>
 
 <joint name="left_wheel_joint" type="revolute">
@@ -223,7 +223,7 @@
   <child link="left_drive_wheel_link"/>
   <axis xyz="0.0 -1.0 0.0"/>
   <dynamics damping="0.01" friction="0.0"/>
-  <limit effort="2.0" lower="-10000" upper="10000" velocity="30.0"/>
+  <limit effort="0.5" lower="-10000" upper="10000" velocity="30.0"/>
 </joint>
 
 <joint name="left_idler_wheel_joint" type="fixed">
@@ -238,8 +238,8 @@
   <parent link="base_link"/>
   <child link="right_thigh_link_1"/>
   <axis xyz="0.0 -1.0 0.0"/>
-  <dynamics damping="0.3" friction="0.05"/>
-  <limit lower="-0.7" upper="0.4" effort="2" velocity="100"/>
+  <dynamics damping="0.02" friction="0.05"/>
+  <limit lower="-0.7" upper="0.4" effort="0.5" velocity="100"/>
 </joint>
 
 <joint name="right_knee_joint" type="revolute">
@@ -247,8 +247,8 @@
   <parent link="right_thigh_link_1"/>
   <child link="right_shank_link_2"/>
   <axis xyz="0.0 -1.0 0.0"/>
-  <dynamics damping="0.3" friction="0.05"/>
-  <limit lower="-0.488692" upper="0.436332" effort="2" velocity="100"/>
+  <dynamics damping="0.02" friction="0.05"/>
+  <limit lower="-0.488692" upper="0.436332" effort="0.5" velocity="100"/>
 </joint>
 
 <joint name="right_wheel_joint" type="revolute">
@@ -257,7 +257,7 @@
   <child link="right_drive_wheel_link"/>
   <axis xyz="0.0 -1.0 0.0"/>
   <dynamics damping="0.01" friction="0.0"/>
-  <limit effort="2.0" lower="-10000" upper="10000" velocity="30.0"/>
+  <limit effort="0.5" lower="-10000" upper="10000" velocity="30.0"/>
 </joint>
 
 <joint name="right_idler_wheel_joint" type="fixed">

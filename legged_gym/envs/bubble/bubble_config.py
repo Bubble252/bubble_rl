@@ -23,8 +23,8 @@ class BubbleFlatCfg(LeggedRobotCfg):
         joint_state_history_length = 10     # ← 前 10 帧
 
     class terrain(LeggedRobotCfg.terrain):
-        # ===================== Phase 2: 轻度地形 =====================
-        mesh_type = "trimesh"          # ← plane → trimesh
+        # ===================== Step 9: 回到平地验证 0.5Nm 基础行走 =====================
+        mesh_type = "plane"            # ← 先在平地验证，确认后再上 trimesh
         measure_heights = False        # ← 纯本体感知，不用地形高度观测
         curriculum = True              # ← 课程学习：从易到难
         max_init_terrain_level = 3     # ← 起始最高难度级别（保守）
@@ -50,13 +50,16 @@ class BubbleFlatCfg(LeggedRobotCfg):
         lookat = [0.0, 0.0, 0.1]
 
     class init_state(LeggedRobotCfg.init_state):
-        pos = [0.0, 0.0, 0.20]   # 略高于站立高度让机器人自然落地
+        pos = [0.0, 0.0, 0.18]   # 接近弯腿站立高度
         default_joint_angles = {
-            "left_thigh_joint": 0.0,
-            "left_knee_joint": 0.0,
+            # 弯腿姿态: thigh向前弯(+), knee向后弯(-) → 降低重心 + 增加腿部可调范围
+            # 左腿: thigh正=向前, knee负=向后弯
+            "left_thigh_joint": 0.2,
+            "left_knee_joint": -0.2,
             "left_wheel_joint": 0.0,
-            "right_thigh_joint": 0.0,
-            "right_knee_joint": 0.0,
+            # 右腿: 因axis反向, thigh负=向前, knee正=向后弯
+            "right_thigh_joint": -0.2,
+            "right_knee_joint": 0.2,
             "right_wheel_joint": 0.0,
         }
 
@@ -66,20 +69,20 @@ class BubbleFlatCfg(LeggedRobotCfg):
         # "diablo"  — 位置追踪模式：保留dof_err, 高Kp, 角度差产生持续驱动力
         # "b2w"     — 恒速驱动模式：dof_err=0, dof_vel覆盖为常数, D项恒定推力
         wheel_drive_mode = "b2w"      # ← 切换这里！
-        wheel_speed = 3.0             # ← b2w 模式：恒定推力 = Kd × wheel_speed = 0.3 N·m (降低推力减少空转)
+        wheel_speed = 2.0             # ← 降低! 基线推力=0.05×1.0=0.05Nm, 可调范围[-0.20,+0.30]更对称
 
         control_type = 'P'
         stiffness = {
-            "thigh": 3.0,            # ← 降低刚度，减少过冲 (5→3)
-            "knee": 3.0,             # ← 同上
-            "wheel": 4.0,
+            "thigh": 2.0,            # ← Kp×action_scale=2.0×0.25=0.50 刚好极限
+            "knee": 2.0,             # ← 同上
+            "wheel": 1.0,            # ← 轮子Kp>0: 策略可调制轮子力矩 [-0.15, +0.35] N·m
         }  # [N*m/rad]
         damping = {
-            "thigh": 1.0,            # ← 加倍阻尼，抑制振荡 (0.5→1.0)
-            "knee": 1.0,             # ← 同上
-            "wheel": 0.1,
+            "thigh": 0.08,            # ← 微调: 0.05→0.08, 总阻尼=URDF(0.02)+Kd(0.08)=0.10
+            "knee": 0.08,             # ← 同上
+            "wheel": 0.05,            # ← 轮子推力 = 0.05 × speed
         }  # [N*m*s/rad]
-        action_scale = 0.15       # ← 限制单步最大调整幅度 (0.25→0.15)
+        action_scale = 0.25       # ← Kp×0.25=0.5Nm极限, 实际action<1所以有余量
         decimation = 2            # ← 100 Hz 策略频率 
 
     class asset(LeggedRobotCfg.asset):
@@ -87,7 +90,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
         name = "bubble"
         foot_name = "drive_wheel"
         penalize_contacts_on = ["base", "thigh", "shank", "idler"]  # idler 改为惩罚而非终止
-        terminate_after_contacts_on = ["base", "shank"]  # base 或小腿触地 → 立即终止（防跪）
+        terminate_after_contacts_on = ["base"]  # 只有机体碰地终止, shank暂时允许(0.5Nm太弱)
         flip_visual_attachments = False
         self_collisions = 0
         replace_cylinder_with_capsule = False  # 保持轮子碰撞体为圆柱
@@ -95,47 +98,47 @@ class BubbleFlatCfg(LeggedRobotCfg):
     class domain_rand:
         randomize_friction = True
         friction_range = [0.3, 1.5]    # ← Phase2: 扩大摩擦范围，适应不同地面 (0.5~1.25→0.3~1.5)
-        randomize_base_mass = True     # ← Phase2: 开启质量随机化，提高鲁棒性
+        randomize_base_mass = False    # ← 先关闭! 0.5Nm极限下, 质量变化影响太大
         added_mass_range = [-0.2, 0.3] # ← Bubble 仅 2.17kg，不能加太多
-        push_robots = True
-        push_interval_s = 12           # ← Phase2: 稍微频繁推一下 (15→12)
-        max_push_vel_xy = 1.0
+        push_robots = False            # ← 先关闭! 0.5Nm电机太弱, 先学会站立再加推扰
+        push_interval_s = 12
+        max_push_vel_xy = 0.3          # ← 大幅降低
 
     class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.95
         soft_dof_vel_limit = 0.9
         soft_torque_limit = 0.9
         max_contact_force = 300.0
-        only_positive_rewards = False  # ← Phase2: 地形训练需要惩罚信号 (True→False)
-        tracking_sigma = 0.15          # ← 缩小sigma，提高跟踪精度 (0.25→0.15)
-        base_height_target = 0.15      # ← 顺应物理最优高度 (0.15→0.17)改回去了
+        only_positive_rewards = True   # ← 关键! 截断负奖励→0, 让"活着"永远比"死"好
+        tracking_sigma = 0.25          # ← 放宽sigma, 0.5Nm电机跟踪精度有限
+        base_height_target = 0.14     # ← 弯腿后目标高度降低
 
         class scales(LeggedRobotCfg.rewards.scales):
             # === 正向奖励 ===
-            tracking_lin_vel = 3.0     # ← 提高跟踪权重 (2.0→3.0)
-            tracking_ang_vel = 0.5     # ← 参考 Diablo=0.5
-            no_fly = 1.0               # ← 参考 Diablo=1.0，轮子贴地
-            # === 惩罚项 ===
-            termination = -0.8         # ← 参考 B2W=-0.8
-            lin_vel_z = -1.0           # ← 参考 Diablo=-1.0
-            ang_vel_xy = -0.5          # ← 抑制 pitch 角速度
-            orientation = -5.0         # ← Phase2: 放松姿态约束，斜坡上无法保持水平 (-10→-5)
-            torques = -0.00001         # ← 参考 Diablo
-            dof_vel = 0.0              # ← 不惩罚，靠物理阻尼解决
+            tracking_lin_vel = 2.0     # ← 主奖励
+            tracking_ang_vel = 1.0     # ← 开启! 让策略跟踪yaw命令，不再自由转圈
+            no_fly = 1.0               # ← 轮子贴地
+            # === 惩罚项 (only_positive_rewards=True 会截断, 但仍影响梯度方向) ===
+            termination = -0.8
+            lin_vel_z = -1.0
+            ang_vel_xy = -0.05         # ← 恢复! 压制pitch/roll振荡
+            orientation = -1.0         # ← 大幅降低! 5.0→1.0, 0.5Nm电机维持姿态能力有限
+            torques = -0.00001
+            dof_vel = 0.0
             dof_acc = 0.0
-            base_height = 0          # ← 正向奖励 exp(-40*err²)
+            base_height = 0          # ← 开启! 奖励保持站立高度(指数型)
             feet_air_time = 0.0
-            collision = -50.0
-            action_rate = -0.3         # ← 适当放松，物理阻尼已够 (0.5→0.3)
+            collision = -100.0           # ← 大幅降低! 50→5, 之前是第二大杀手(-0.025/step)
+            action_rate = -0.05        # ← 降低! 0.3→0.05
             feet_stumble = 0.0
-            stumble = -0.5             # ← Phase2: 惩罚绊倒，地形上很重要
+            stumble = -0.5
             stand_still = 0.0
             feet_contact_forces = 0.0
-            dof_pos_limits = -1.0      # ← 参考 Diablo=-1.0
+            dof_pos_limits = -1.0
             dof_vel_limits = 0.0
             torque_limits = 0.0
-            no_moonwalk = -2.0         # ← 参考 Diablo=-2.0，防太空步
-            wheel_vel = -0.0005        # ← 惩罚轮速过大
+            no_moonwalk = -8.0         # ← 增大! -2→-8, 之前惩罚(-0.015)远小于正奖励(~0.22)
+            wheel_vel = -0.0005
 
     class commands(LeggedRobotCfg.commands):
         curriculum = False
@@ -145,9 +148,9 @@ class BubbleFlatCfg(LeggedRobotCfg):
         heading_command = True        # ← 开启！从heading误差计算ang_vel_yaw命令
 
         class ranges(LeggedRobotCfg.commands.ranges):
-            lin_vel_x = [-1.0, 1.0]   # 扩大速度范围
+            lin_vel_x = [-0.5, 0.5]   # ← 0.5Nm电机: 降低速度期望
             lin_vel_y = [0.0, 0.0]    # 双轮足无侧向
-            ang_vel_yaw = [-1.0, 1.0]  # ← Phase1: 开启转弯
+            ang_vel_yaw = [-0.5, 0.5]  # ← 0.5Nm电机: 降低转弯速度
             heading = [-3.14, 3.14]
 
     class normalization:
