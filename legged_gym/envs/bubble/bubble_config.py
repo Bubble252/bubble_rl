@@ -23,8 +23,8 @@ class BubbleFlatCfg(LeggedRobotCfg):
         joint_state_history_length = 10     # ← 前 10 帧
 
     class terrain(LeggedRobotCfg.terrain):
-        # ===================== Step 9: 回到平地验证 0.5Nm 基础行走 =====================
-        mesh_type = "plane"            # ← 先在平地验证，确认后再上 trimesh
+        # ===================== 地形训练 =====================
+        mesh_type = "trimesh"          # ← 开启地形训练!
         measure_heights = False        # ← 纯本体感知，不用地形高度观测
         curriculum = True              # ← 课程学习：从易到难
         max_init_terrain_level = 3     # ← 起始最高难度级别（保守）
@@ -41,7 +41,8 @@ class BubbleFlatCfg(LeggedRobotCfg):
         rough_noise_range = 0.02       # ← 粗糙噪声 ±2cm (默认±5cm)
         wave_amplitude = 0.03          # ← 波浪幅度 3cm (默认10cm)
         wave_amplitude_scale = 0.05    # ← 渐进波浪振幅缩放
-        add_perlin_noise = False       # ← 不加柏林噪声（Phase 2 暂不需要）
+        add_perlin_noise = True        # ← 重新开启 perlin 噪声
+        perlin_zScale = 0.03           # ← Bubble专属! 默认0.2→0.03, 幅度≈±3cm (站立高度14cm)
         track_test = False             # ← 不使用跑道测试模式
 
     class viewer(LeggedRobotCfg.viewer):
@@ -75,12 +76,12 @@ class BubbleFlatCfg(LeggedRobotCfg):
         stiffness = {
             "thigh": 2.0,            # ← Kp×action_scale=2.0×0.25=0.50 刚好极限
             "knee": 2.0,             # ← 同上
-            "wheel": 1.0,            # ← 轮子Kp>0: 策略可调制轮子力矩 [-0.15, +0.35] N·m
+            "wheel": 1.2,            # ← 轮子Kp: 1.2×0.25=±0.3Nm 对称范围
         }  # [N*m/rad]
         damping = {
             "thigh": 0.08,            # ← 微调: 0.05→0.08, 总阻尼=URDF(0.02)+Kd(0.08)=0.10
             "knee": 0.08,             # ← 同上
-            "wheel": 0.05,            # ← 轮子推力 = 0.05 × speed
+            "wheel": 0.0,             # ← Kd=0: 去掉D项偏置, 轮子力矩完全对称 ±0.3Nm
         }  # [N*m*s/rad]
         action_scale = 0.25       # ← Kp×0.25=0.5Nm极限, 实际action<1所以有余量
         decimation = 2            # ← 100 Hz 策略频率 
@@ -98,11 +99,11 @@ class BubbleFlatCfg(LeggedRobotCfg):
     class domain_rand:
         randomize_friction = True
         friction_range = [0.3, 1.5]    # ← Phase2: 扩大摩擦范围，适应不同地面 (0.5~1.25→0.3~1.5)
-        randomize_base_mass = False    # ← 先关闭! 0.5Nm极限下, 质量变化影响太大
+        randomize_base_mass = True     # ← 开启! 地形训练阶段增强鲁棒性
         added_mass_range = [-0.2, 0.3] # ← Bubble 仅 2.17kg，不能加太多
-        push_robots = False            # ← 先关闭! 0.5Nm电机太弱, 先学会站立再加推扰
-        push_interval_s = 12
-        max_push_vel_xy = 0.3          # ← 大幅降低
+        push_robots = True             # ← 开启! 随机外力推扰, sim2real 必需
+        push_interval_s = 15           # ← 每15秒推一次 (与 Diablo 一致)
+        max_push_vel_xy = 0.2          # ← 保持低推力, 0.5Nm电机恢复能力有限
 
     class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.95
@@ -110,7 +111,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
         soft_torque_limit = 0.9
         max_contact_force = 300.0
         only_positive_rewards = True   # ← 关键! 截断负奖励→0, 让"活着"永远比"死"好
-        tracking_sigma = 0.25          # ← 放宽sigma, 0.5Nm电机跟踪精度有限
+        tracking_sigma = 0.15          # ← 放宽sigma, 0.5Nm电机跟踪精度有限
         base_height_target = 0.14     # ← 弯腿后目标高度降低
 
         class scales(LeggedRobotCfg.rewards.scales):

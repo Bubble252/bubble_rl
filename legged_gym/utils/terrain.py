@@ -80,9 +80,12 @@ class Terrain:
         if cfg.add_perlin_noise:
             self.xSize = cfg.terrain_length * cfg.num_rows + 2 * cfg.border_size
             self.ySize = cfg.terrain_width * cfg.num_cols + 2 * cfg.border_size
-            # print('Perlin:', self.xSize, self.ySize, self.tot_rows, self.tot_cols)
+            # 从 config 读取 perlin 幅度缩放，默认 0.2（适合大型机器人如 ANYmal）
+            perlin_zScale = getattr(cfg, 'perlin_zScale', 0.2)
+            # print('Perlin:', self.xSize, self.ySize, self.tot_rows, self.tot_cols, 'zScale:', perlin_zScale)
             self.perlin_noise = self.generate_fractal_noise_2d(
-                self.xSize, self.ySize, self.tot_rows, self.tot_cols
+                self.xSize, self.ySize, self.tot_rows, self.tot_cols,
+                zScale=perlin_zScale,
             )
             # plt.imshow(self.perlin_noise, cmap="gray")
             # plt.colorbar()

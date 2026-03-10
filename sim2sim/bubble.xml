@@ -1,0 +1,159 @@
+<mujoco model="bubble">
+  <!-- ==================== 编译选项 ==================== -->
+  <compiler angle="radian" meshdir="../resources/robots/bubble/meshes/" autolimits="true"/>
+  
+  <option timestep="0.005" gravity="0 0 -9.81" iterations="4" solver="Newton">
+    <flag warmstart="enable"/>
+  </option>
+
+  <!-- 渲染质量 -->
+  <visual>
+    <quality shadowsize="4096" offsamples="8"/>
+    <map force="0.1" zfar="30"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global offwidth="1920" offheight="1080"/>
+  </visual>
+
+  <default>
+    <joint armature="0.0"/>
+    <geom condim="3" contype="1" conaffinity="1" friction="1.0 0.005 0.0001" margin="0.001"/>
+    <motor ctrllimited="true"/>
+  </default>
+
+  <!-- ==================== 视觉资产 ==================== -->
+  <asset>
+    <mesh name="base_link" file="base_link.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="left_thigh_link_1" file="left_thigh_link_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="right_thigh_link_1" file="right_thigh_link_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="left_shank_link_1" file="left_shank_link_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="right_shank_link_2" file="right_shank_link_2.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="left_wheel" file="left_wheel_link_2.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="right_wheel" file="right_wheel_link_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="left_idler" file="left_idler_wheel_link_2.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="right_idler" file="right_idler_wheel_link_1.stl" scale="0.001 0.001 0.001"/>
+    <texture type="skybox" builtin="gradient" rgb1="0.4 0.6 0.8" rgb2="0.05 0.05 0.15" width="512" height="3072"/>
+    <texture name="texplane" type="2d" builtin="checker" rgb1="0.25 0.28 0.32" rgb2="0.18 0.20 0.24" width="512" height="512"/>
+    <material name="matplane" texture="texplane" texrepeat="20 20" reflectance="0.3" specular="0.1"/>
+    <material name="matrobot" rgba="0.85 0.85 0.85 1" specular="0.6" shininess="0.3"/>
+    <material name="matwheel" rgba="0.2 0.2 0.7 1" specular="0.8" shininess="0.5"/>
+  </asset>
+
+  <!-- ==================== 世界 ==================== -->
+  <worldbody>
+    <!-- 地面 -->
+    <geom name="floor" type="plane" size="100 100 0.1" material="matplane" conaffinity="1" contype="1"/>
+    <light directional="true" diffuse="0.9 0.9 0.9" specular="0.5 0.5 0.5" pos="0 0 5" dir="0 0 -1" castshadow="true"/>
+    <light directional="true" diffuse="0.3 0.3 0.3" pos="2 -3 3" dir="-0.5 1 -1" castshadow="false"/>
+
+    <!-- ==================== 机器人 ==================== -->
+    <body name="base_link" pos="0 0 0.18">
+      <freejoint name="root"/>
+      <inertial pos="0.005 -0.050239 -0.034488" mass="0.7"
+                diaginertia="0.001163 0.002030 0.001728"/>
+      <site name="imu_site" pos="0 0 0" size="0.01"/>
+      <geom type="mesh" mesh="base_link" material="matrobot" contype="1" conaffinity="1"/>
+
+      <!-- ======= 左腿 ======= -->
+      <body name="left_thigh_link_1" pos="-0.010958 -0.009778 -0.036464">
+        <inertial pos="-0.007842 0.021652 -0.005961" mass="0.21"
+                  diaginertia="0.000139 0.000200 0.000153"/>
+        <joint name="left_thigh_joint" type="hinge" axis="0 1 0"
+               range="-0.4 0.7" damping="0.02" frictionloss="0.0"/>
+        <geom type="mesh" mesh="left_thigh_link_1" pos="0.010958 0.009778 0.036464"
+              material="matrobot" contype="1" conaffinity="1"/>
+
+        <body name="left_shank_link_1" pos="-0.045962 0.0285 -0.045962">
+          <inertial pos="0.027261 -0.001727 -0.023618" mass="0.08"
+                    diaginertia="0.000039 0.000083 0.0000485"/>
+          <joint name="left_knee_joint" type="hinge" axis="0 1 0"
+                 range="-0.436332 0.488692" damping="0.02" frictionloss="0.0"/>
+          <geom type="mesh" mesh="left_shank_link_1" pos="0.05692 -0.018722 0.082426"
+                material="matrobot" contype="1" conaffinity="1"/>
+
+          <!-- 左驱动轮 -->
+          <body name="left_drive_wheel_link" pos="0.045962 0.002 -0.045962">
+            <inertial pos="0 0.016535 0" mass="0.2"
+                      diaginertia="0.0000609 0.0001088 0.0000609"/>
+            <joint name="left_wheel_joint" type="hinge" axis="0 -1 0"
+                   limited="false" damping="0.01" frictionloss="0.0"/>
+            <!-- 碰撞用圆柱体 (与 URDF 一致) -->
+            <geom name="left_wheel_col" type="cylinder" size="0.0315 0.013"
+                  pos="0 0.013 0" euler="1.5708 0 0"
+                  material="matwheel" contype="1" conaffinity="1"
+                  friction="1.0 0.005 0.0001"/>
+            <geom type="mesh" mesh="left_wheel" pos="0.010958 -0.020722 0.128388"
+                  rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+          </body>
+
+          <!-- 左惰轮 (固定到 shank) -->
+          <body name="left_idler_wheel_link_2" pos="-0.0234 0.0025 -0.015377">
+            <inertial pos="0 -0.0015 0" mass="0.00698"
+                      diaginertia="0.000001 0.000001 0.000001"/>
+            <geom type="mesh" mesh="left_idler" pos="0.08032 -0.021222 0.097803"
+                  rgba="0.6 0.6 0.6 1" contype="1" conaffinity="1"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ======= 右腿 ======= -->
+      <body name="right_thigh_link_1" pos="-0.010958 -0.089778 -0.036464">
+        <inertial pos="-0.007842 -0.021653 -0.005961" mass="0.21"
+                  diaginertia="0.000139 0.000200 0.000153"/>
+        <joint name="right_thigh_joint" type="hinge" axis="0 -1 0"
+               range="-0.7 0.4" damping="0.02" frictionloss="0.0"/>
+        <geom type="mesh" mesh="right_thigh_link_1" pos="0.010958 0.089778 0.036464"
+              material="matrobot" contype="1" conaffinity="1"/>
+
+        <body name="right_shank_link_2" pos="-0.045962 -0.0285 -0.045962">
+          <inertial pos="0.027261 0.001726 -0.023618" mass="0.08"
+                    diaginertia="0.000039 0.000083 0.0000485"/>
+          <joint name="right_knee_joint" type="hinge" axis="0 -1 0"
+                 range="-0.488692 0.436332" damping="0.02" frictionloss="0.0"/>
+          <geom type="mesh" mesh="right_shank_link_2" pos="0.05692 0.118278 0.082426"
+                material="matrobot" contype="1" conaffinity="1"/>
+
+          <!-- 右驱动轮 -->
+          <body name="right_drive_wheel_link" pos="0.045962 -0.002 -0.045962">
+            <inertial pos="0 -0.016536 0" mass="0.2"
+                      diaginertia="0.0000609 0.0001088 0.0000609"/>
+            <joint name="right_wheel_joint" type="hinge" axis="0 -1 0"
+                   limited="false" damping="0.01" frictionloss="0.0"/>
+            <geom name="right_wheel_col" type="cylinder" size="0.0315 0.013"
+                  pos="0 -0.013 0" euler="1.5708 0 0"
+                  material="matwheel" contype="1" conaffinity="1"
+                  friction="1.0 0.005 0.0001"/>
+            <geom type="mesh" mesh="right_wheel" pos="0.010958 0.120278 0.128388"
+                  rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+          </body>
+
+          <!-- 右惰轮 (固定到 shank) -->
+          <body name="right_idler_wheel_link_1" pos="-0.0234 -0.0025 -0.015377">
+            <inertial pos="0 0.0015 0" mass="0.00698"
+                      diaginertia="0.000001 0.000001 0.000001"/>
+            <geom type="mesh" mesh="right_idler" pos="0.08032 0.120778 0.097803"
+                  rgba="0.6 0.6 0.6 1" contype="1" conaffinity="1"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- ==================== 执行器 (力矩直控) ==================== -->
+  <!-- sim2sim 中我们直接输出力矩，不用 MuJoCo 内置 PD -->
+  <actuator>
+    <motor name="left_thigh_motor"  joint="left_thigh_joint"  ctrlrange="-0.5 0.5" gear="1"/>
+    <motor name="left_knee_motor"   joint="left_knee_joint"   ctrlrange="-0.5 0.5" gear="1"/>
+    <motor name="left_wheel_motor"  joint="left_wheel_joint"  ctrlrange="-0.5 0.5" gear="1"/>
+    <motor name="right_thigh_motor" joint="right_thigh_joint" ctrlrange="-0.5 0.5" gear="1"/>
+    <motor name="right_knee_motor"  joint="right_knee_joint"  ctrlrange="-0.5 0.5" gear="1"/>
+    <motor name="right_wheel_motor" joint="right_wheel_joint" ctrlrange="-0.5 0.5" gear="1"/>
+  </actuator>
+
+  <!-- ==================== 传感器 ==================== -->
+  <sensor>
+    <accelerometer name="imu_acc" site="imu_site"/>
+    <gyro name="imu_gyro" site="imu_site"/>
+    <framequat name="imu_quat" objtype="site" objname="imu_site"/>
+  </sensor>
+
+</mujoco>
