@@ -68,13 +68,26 @@ class Bubble(LeggedRobot):
         theta_left = self.dof_pos[:, knee_left]
 
         # 两腿在 x 轴方向投影之和应相等
-        r = torch.sin(theta_right) + torch.sin(
-            self.dof_pos[:, thigh_right] + theta_right
+        r = torch.sin(theta_right-0.8) + torch.sin(3.14159265/2+
+            self.dof_pos[:, thigh_right] + theta_right-0.8
         )
-        l = torch.sin(theta_left) + torch.sin(
-            self.dof_pos[:, thigh_left] + theta_left
+        l = torch.sin(theta_left+0.8) + torch.sin(-3.14159265/2+
+            self.dof_pos[:, thigh_left] + theta_left+0.8
         )
         return torch.square(r + l)
+
+    def _process_rigid_shape_props(self, props, env_id):
+        """重写: 在父类摩擦随机化基础上，添加弹性系数(restitution)随机化。"""
+        props = super()._process_rigid_shape_props(props, env_id)
+        if getattr(self.cfg.domain_rand, 'randomize_restitution', False):
+            if env_id == 0:
+                min_rest, max_rest = self.cfg.domain_rand.restitution_range
+                self.restitution_coeffs = torch.rand(
+                    self.num_envs, dtype=torch.float, device='cpu',
+                ) * (max_rest - min_rest) + min_rest
+            for s in range(len(props)):
+                props[s].restitution = self.restitution_coeffs[env_id].item()
+        return props
 
     def _compute_torques(self, actions):
         """根据 wheel_drive_mode 选择轮子驱动方式：
@@ -120,13 +133,58 @@ class Bubble(LeggedRobot):
         else:
             raise ValueError(f"Unknown wheel_drive_mode: {mode}")
 
-        return torch.clip(torques, -self.torque_limits, self.torque_limits)
+        return torch.clip(torques * self.torques_scale, -self.torque_limits, self.torque_limits)
+
+    def step(self, actions):
+        """重写 step: 添加 action delay FIFO 支持。
+        
+        当 randomize_action_delay=True 时，每个 env 有不同的延迟帧数。
+        新动作推入 FIFO 头部，从 action_delay_idx 位置取出延迟后的动作。
+        """
+        clip_actions = self.cfg.normalization.clip_actions
+        self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
+        self.render()
+
+        use_delay = getattr(self.cfg.domain_rand, 'randomize_action_delay', False)
+
+        for _ in range(self.cfg.control.decimation):
+            if use_delay:
+                # 将当前 action 推入 FIFO 头部，旧的往后移
+                self.action_fifo = torch.cat(
+                    (self.actions.unsqueeze(1), self.action_fifo[:, :-1, :]), dim=1
+                )
+                # 每个 env 从自己的延迟位置取动作
+                delayed_actions = self.action_fifo[
+                    torch.arange(self.num_envs, device=self.device), self.action_delay_idx, :
+                ]
+                self.torques = self._compute_torques(delayed_actions).view(self.torques.shape)
+            else:
+                self.torques = self._compute_torques(self.actions).view(self.torques.shape)
+
+            self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+            self.gym.simulate(self.sim)
+            if self.device == 'cpu':
+                self.gym.fetch_results(self.sim, True)
+            self.gym.refresh_dof_state_tensor(self.sim)
+        self.post_physics_step()
+
+        clip_obs = self.cfg.normalization.clip_observations
+        self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
+        if self.privileged_obs_buf is not None:
+            self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
+        return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
 
     def _reset_dofs(self, env_ids):
         """重写: 默认角度全为0时, 父类 0*rand=0 没有随机化探索。
-        改为 default + rand 而非 default * rand。"""
+        改为 default + rand 而非 default * rand。
+        注意: default_dof_pos 可能是 (1, num_dof) 或 (num_envs, num_dof)。"""
+        # 取对应 env 的默认角度（2D 则 per-env 已含零位偏差随机化）
+        if self.default_dof_pos.shape[0] == 1:
+            default_pos = self.default_dof_pos  # (1, num_dof) 广播
+        else:
+            default_pos = self.default_dof_pos[env_ids]  # (len(env_ids), num_dof)
         # 加性随机化: 在默认角度基础上 ±0.05 rad (0.5Nm电机弱，不能偏太多)
-        self.dof_pos[env_ids] = self.default_dof_pos + torch_rand_float(-0.05, 0.05, 
+        self.dof_pos[env_ids] = default_pos + torch_rand_float(-0.05, 0.05, 
             (len(env_ids), self.num_dof), device=self.device)
         # 轮子角度随机无意义，清零
         self.dof_pos[env_ids, self.wheel_indices[0]] = 0.
@@ -154,6 +212,90 @@ class Bubble(LeggedRobot):
         print(f"[Bubble] ★ Wheel torque limits overridden to 0.5 N·m")
         print(f"[Bubble] ★ Wheel drive mode: {self.cfg.control.wheel_drive_mode}")
 
+        # ====================================================================
+        # ★ 域随机化: 扩展 p_gains/d_gains 为 2D (num_envs, num_dof)
+        #   + 添加 torques_scale / action_delay / default_dof_pos 随机化
+        #   参考 TRON1A base_task.py 实现
+        # ====================================================================
+
+        # 父类 p_gains/d_gains 是 1D (num_actions,)，扩展为 2D (num_envs, num_dof)
+        p_gains_1d = self.p_gains.clone()  # (num_actions,)
+        d_gains_1d = self.d_gains.clone()
+        self.p_gains = p_gains_1d.unsqueeze(0).repeat(self.num_envs, 1)  # (num_envs, num_dof)
+        self.d_gains = d_gains_1d.unsqueeze(0).repeat(self.num_envs, 1)
+
+        # 力矩缩放因子 (num_envs, num_dof)，默认全1
+        self.torques_scale = torch.ones(
+            self.num_envs, self.num_dof,
+            dtype=torch.float, device=self.device, requires_grad=False,
+        )
+
+        # --- Kp 随机化 ---
+        if getattr(self.cfg.domain_rand, 'randomize_Kp', False):
+            kp_min, kp_max = self.cfg.domain_rand.randomize_Kp_range
+            self.p_gains *= torch_rand_float(
+                kp_min, kp_max, self.p_gains.shape, device=self.device,
+            )
+            print(f"[Bubble] ★ Kp randomized: range [{kp_min}, {kp_max}]")
+
+        # --- Kd 随机化 ---
+        if getattr(self.cfg.domain_rand, 'randomize_Kd', False):
+            kd_min, kd_max = self.cfg.domain_rand.randomize_Kd_range
+            self.d_gains *= torch_rand_float(
+                kd_min, kd_max, self.d_gains.shape, device=self.device,
+            )
+            print(f"[Bubble] ★ Kd randomized: range [{kd_min}, {kd_max}]")
+
+        # --- 电机力矩缩放随机化 ---
+        if getattr(self.cfg.domain_rand, 'randomize_motor_torque', False):
+            t_min, t_max = self.cfg.domain_rand.randomize_motor_torque_range
+            self.torques_scale *= torch_rand_float(
+                t_min, t_max, self.torques_scale.shape, device=self.device,
+            )
+            print(f"[Bubble] ★ Motor torque scale randomized: range [{t_min}, {t_max}]")
+
+        # --- 默认关节角度随机化 (模拟零位偏差) ---
+        # 父类 default_dof_pos 是 (1, num_dof)，先扩展为 (num_envs, num_dof)
+        if self.default_dof_pos.shape[0] == 1:
+            self.default_dof_pos = self.default_dof_pos.repeat(self.num_envs, 1)
+        if getattr(self.cfg.domain_rand, 'randomize_default_dof_pos', False):
+            dof_min, dof_max = self.cfg.domain_rand.randomize_default_dof_pos_range
+            self.default_dof_pos += torch_rand_float(
+                dof_min, dof_max, (self.num_envs, self.num_dof), device=self.device,
+            )
+            # 轮子默认角度保持 0（continuous joint）
+            self.default_dof_pos[:, self.wheel_indices] = 0.
+            print(f"[Bubble] ★ Default DOF pos randomized: range [{dof_min}, {dof_max}] rad")
+
+        # --- 动作延迟随机化 (action delay FIFO) ---
+        delay_max_ms = getattr(self.cfg.domain_rand, 'delay_ms_range', [0, 0])[1]
+        delay_max_steps = int(np.ceil(delay_max_ms / 1000.0 / self.sim_params.dt)) if delay_max_ms > 0 else 1
+        delay_max_steps = max(delay_max_steps, 1)  # 至少 1 帧 FIFO
+
+        self.action_delay_idx = torch.zeros(
+            self.num_envs, dtype=torch.long, device=self.device, requires_grad=False,
+        )
+        self.action_fifo = torch.zeros(
+            (self.num_envs, delay_max_steps, self.num_actions),
+            dtype=torch.float, device=self.device, requires_grad=False,
+        )
+
+        if getattr(self.cfg.domain_rand, 'randomize_action_delay', False):
+            delay_min_ms, delay_max_ms = self.cfg.domain_rand.delay_ms_range
+            action_delay_idx = torch.round(
+                torch_rand_float(
+                    delay_min_ms / 1000.0 / self.sim_params.dt,
+                    delay_max_ms / 1000.0 / self.sim_params.dt,
+                    (self.num_envs, 1), device=self.device,
+                )
+            ).squeeze(-1)
+            self.action_delay_idx = action_delay_idx.long().clamp(0, delay_max_steps - 1)
+            print(f"[Bubble] ★ Action delay randomized: range [{delay_min_ms}, {delay_max_ms}] ms, max FIFO depth={delay_max_steps}")
+        else:
+            print(f"[Bubble] Action delay disabled (FIFO depth={delay_max_steps})")
+
+        # ====================================================================
+
         # ★ 关节状态历史 buffer（参考 Diablo）
         if getattr(self.cfg.env, 'enable_joint_state_history', False):
             hist_len = self.cfg.env.joint_state_history_length
@@ -170,9 +312,9 @@ class Bubble(LeggedRobot):
         print(f"[Bubble] Wheel DOF indices: {self.wheel_indices.tolist()}")
         print(f"[Bubble] DOF names: {self.dof_names}")
         print(f"[Bubble] Torque limits: {self.torque_limits}")
-        print(f"[Bubble] P gains: {self.p_gains}")
-        print(f"[Bubble] D gains: {self.d_gains}")
-        print(f"[Bubble] Default DOF pos: {self.default_dof_pos}")
+        print(f"[Bubble] P gains (env0): {self.p_gains[0]}")
+        print(f"[Bubble] D gains (env0): {self.d_gains[0]}")
+        print(f"[Bubble] Default DOF pos (env0): {self.default_dof_pos[0]}")
         print(f"[Bubble] DOF pos limits: {self.dof_pos_limits}")
 
     def compute_observations(self):
@@ -352,3 +494,7 @@ class Bubble(LeggedRobot):
         if getattr(self.cfg.env, 'enable_joint_state_history', False) and len(env_ids) > 0:
             self.dof_pos_error_history[env_ids].zero_()
             self.dof_vel_history[env_ids].zero_()
+
+        # ★ 清零 action delay FIFO
+        if hasattr(self, 'action_fifo') and len(env_ids) > 0:
+            self.action_fifo[env_ids] = 0.

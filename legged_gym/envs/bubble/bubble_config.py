@@ -24,7 +24,7 @@ class BubbleFlatCfg(LeggedRobotCfg):
 
     class terrain(LeggedRobotCfg.terrain):
         # ===================== 地形训练 =====================
-        mesh_type = "trimesh"          # ← 开启地形训练!
+        mesh_type = "plane"            # ← 平地训练
         measure_heights = False        # ← 纯本体感知，不用地形高度观测
         curriculum = True              # ← 课程学习：从易到难
         max_init_terrain_level = 3     # ← 起始最高难度级别（保守）
@@ -97,13 +97,33 @@ class BubbleFlatCfg(LeggedRobotCfg):
         replace_cylinder_with_capsule = False  # 保持轮子碰撞体为圆柱
 
     class domain_rand:
+        # --- 1. 地面摩擦随机化 ---
         randomize_friction = True
         friction_range = [0.3, 1.5]    # ← Phase2: 扩大摩擦范围，适应不同地面 (0.5~1.25→0.3~1.5)
+        # --- 2. 地面弹性系数随机化 ---
+        randomize_restitution = True
+        restitution_range = [0.0, 0.5] # ← Bubble 轮式, 弹性不宜过高
+        # --- 3. 机体质量随机化 ---
         randomize_base_mass = True     # ← 开启! 地形训练阶段增强鲁棒性
         added_mass_range = [-0.2, 0.3] # ← Bubble 仅 2.17kg，不能加太多
+        # --- 4. 外力推扰 ---
         push_robots = True             # ← 开启! 随机外力推扰, sim2real 必需
-        push_interval_s = 15           # ← 每15秒推一次 (与 Diablo 一致)
-        max_push_vel_xy = 0.2          # ← 保持低推力, 0.5Nm电机恢复能力有限
+        push_interval_s = 7            # ← 与 TRON1A 一致, 20s episode 约被推 3 次
+        max_push_vel_xy = 0.5          # ← 冲量=2.17×0.5=1.09, 冲量/质量比=0.5 (TRON1A 的一半)
+        # --- 5. PD 增益随机化 (sim2real 关键: 真实电机 Kp/Kd 有偏差) ---
+        randomize_Kp = True
+        randomize_Kp_range = [0.85, 1.15]   # ← ±15%, Bubble 电机弱, 不宜偏差太大
+        randomize_Kd = True
+        randomize_Kd_range = [0.85, 1.15]   # ← ±15%
+        # --- 6. 电机力矩缩放随机化 (模拟电机效率差异) ---
+        randomize_motor_torque = True
+        randomize_motor_torque_range = [0.85, 1.15]  # ← ±15%
+        # --- 7. 默认关节角度随机化 (模拟零位偏差) ---
+        randomize_default_dof_pos = True
+        randomize_default_dof_pos_range = [-0.03, 0.03]  # ← ±0.03 rad (~1.7°), Bubble 行程小
+        # --- 8. 动作延迟随机化 (模拟通信/计算延迟) ---
+        randomize_action_delay = True
+        delay_ms_range = [0, 10]       # ← 0~10ms, Bubble 控制频率 100~200Hz, 不宜太长
 
     class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.95

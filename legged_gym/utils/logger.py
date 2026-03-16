@@ -78,9 +78,9 @@ class Logger:
         plt.show()
 
     def _plot_6(self):
-        nb_rows = 7
+        nb_rows = 10
         nb_cols = 2
-        fig, axs = plt.subplots(nb_rows, nb_cols, figsize=(14, 21))
+        fig, axs = plt.subplots(nb_rows, nb_cols, figsize=(14, 30))
         for key, value in self.state_log.items():
             time = np.linspace(0, len(value)*self.dt, len(value))
             break
@@ -190,6 +190,75 @@ class Logger:
             avg = np.mean(total_coll)
             a.axhline(y=avg, color='gray', linestyle='--', alpha=0.7, label=f'avg={avg:.2f}')
             a.legend()
+        # ★ 大腿力矩 (左右大腿分开显示, 含力矩限制线)
+        a = axs[7, 0]
+        if log["all_torques"]:
+            torques = np.array(log["all_torques"])  # (T, 6)
+            a.plot(time, torques[:, 0], label='L_thigh', color='#1f77b4', alpha=0.8)
+            a.plot(time, torques[:, 3], label='R_thigh', color='#d62728', alpha=0.8)
+            a.axhline(y=4.0, color='red', linestyle='--', alpha=0.4, label='±4.0 limit')
+            a.axhline(y=-4.0, color='red', linestyle='--', alpha=0.4)
+            a.set(xlabel='time [s]', ylabel='Torque [Nm]', title='(o) Thigh Motor Torques')
+            a.legend(fontsize=7)
+        # ★ 膝关节力矩 (左右膝分开显示, 含力矩限制线)
+        a = axs[7, 1]
+        if log["all_torques"]:
+            torques = np.array(log["all_torques"])
+            a.plot(time, torques[:, 1], label='L_knee', color='#ff7f0e', alpha=0.8)
+            a.plot(time, torques[:, 4], label='R_knee', color='#9467bd', alpha=0.8)
+            a.axhline(y=4.0, color='red', linestyle='--', alpha=0.4, label='±4.0 limit')
+            a.axhline(y=-4.0, color='red', linestyle='--', alpha=0.4)
+            a.set(xlabel='time [s]', ylabel='Torque [Nm]', title='(p) Knee Motor Torques')
+            a.legend(fontsize=7)
+        # ★ 轮子力矩 (左右轮分开显示, 含力矩限制线)
+        a = axs[8, 0]
+        if log["all_torques"]:
+            torques = np.array(log["all_torques"])
+            a.plot(time, torques[:, 2], label='L_wheel', color='#2ca02c', alpha=0.8)
+            a.plot(time, torques[:, 5], label='R_wheel', color='#8c564b', alpha=0.8)
+            a.axhline(y=0.5, color='red', linestyle='--', alpha=0.4, label='±0.5 limit')
+            a.axhline(y=-0.5, color='red', linestyle='--', alpha=0.4)
+            a.set(xlabel='time [s]', ylabel='Torque [Nm]', title='(q) Wheel Motor Torques')
+            a.legend(fontsize=7)
+        # ★ Moonwalk 诊断: r/l 分量 + (r+l)² + 左右大腿/膝盖角度
+        a = axs[8, 1]
+        if log["thigh_left_pos"] and log["knee_left_pos"] and log["thigh_right_pos"] and log["knee_right_pos"]:
+            tl = np.array(log["thigh_left_pos"])
+            kl = np.array(log["knee_left_pos"])
+            tr = np.array(log["thigh_right_pos"])
+            kr = np.array(log["knee_right_pos"])
+            # 与 _reward_no_moonwalk 公式一致
+            r = np.sin(kr) + np.sin(tr + kr)
+            l = np.sin(kl) + np.sin(tl + kl)
+            mw_penalty = (r + l) ** 2
+            a.plot(time, r, label='r (right)', color='#d62728', alpha=0.7)
+            a.plot(time, l, label='l (left)', color='#1f77b4', alpha=0.7)
+            a.plot(time, mw_penalty, label='(r+l)²', color='black', linewidth=1.5)
+            a.axhline(y=0, color='gray', linestyle='--', alpha=0.4)
+            a.set(xlabel='time [s]', ylabel='value', title='(r) Moonwalk: r, l, (r+l)²')
+            a.legend(fontsize=7)
+        # ★ 左右大腿角度对比 (劈叉检测)
+        a = axs[9, 0]
+        if log["thigh_left_pos"] and log["thigh_right_pos"]:
+            tl = np.array(log["thigh_left_pos"])
+            tr = np.array(log["thigh_right_pos"])
+            a.plot(time, tl, label='L_thigh', color='#1f77b4')
+            a.plot(time, tr, label='R_thigh', color='#d62728')
+            a.plot(time, tl + tr, '--', label='L+R (0=symmetric)', color='black', alpha=0.7)
+            a.axhline(y=0, color='gray', linestyle='--', alpha=0.3)
+            a.set(xlabel='time [s]', ylabel='Angle [rad]', title='(s) Thigh Angles (劈叉 = L↑R↓)')
+            a.legend(fontsize=7)
+        # ★ 左右膝盖角度对比
+        a = axs[9, 1]
+        if log["knee_left_pos"] and log["knee_right_pos"]:
+            kl = np.array(log["knee_left_pos"])
+            kr = np.array(log["knee_right_pos"])
+            a.plot(time, kl, label='L_knee', color='#ff7f0e')
+            a.plot(time, kr, label='R_knee', color='#9467bd')
+            a.plot(time, kl + kr, '--', label='L+R (0=symmetric)', color='black', alpha=0.7)
+            a.axhline(y=0, color='gray', linestyle='--', alpha=0.3)
+            a.set(xlabel='time [s]', ylabel='Angle [rad]', title='(t) Knee Angles')
+            a.legend(fontsize=7)
         plt.tight_layout()
         plt.show()
 

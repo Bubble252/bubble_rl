@@ -51,6 +51,10 @@ from .b2w.b2w_config import B2wRoughCfg, B2wRoughCfgPPO
 from .b2w.b2w_robot import B2w
 from .bubble.bubble import Bubble
 from .bubble.bubble_config import BubbleFlatCfg, BubbleFlatCfgPPO
+from .bubble.bubble_skill import BubbleSkill
+from .bubble.bubble_skill_config import BubbleSkillCfg, BubbleSkillCfgPPO
+from .bubble.bubble_pointfoot import BubblePointfoot
+from .bubble.bubble_pointfoot_config import BubblePointfootCfg, BubblePointfootCfgPPO
 from legged_gym.utils.task_registry import task_registry
 import os
 # import实例
@@ -69,3 +73,5 @@ task_registry.register( "Woodie", Woodie, WoodieFlatCfg(), WoodieFlatCfgPPO() )
 task_registry.register( "b2w", B2w, B2wRoughCfg(), B2wRoughCfgPPO() )
 task_registry.register( "airbot", Airbot, AirbotRoughCfg(), AirbotRoughCfgPPO() )
 task_registry.register( "bubble", Bubble, BubbleFlatCfg(), BubbleFlatCfgPPO() )
+task_registry.register( "bubble_skill", BubbleSkill, BubbleSkillCfg(), BubbleSkillCfgPPO() )
+task_registry.register( "bubble_pointfoot", BubblePointfoot, BubblePointfootCfg(), BubblePointfootCfgPPO() )

@@ -105,10 +105,9 @@ def parse_sim_params(args, cfg):
 def get_load_path(root, load_run=-1, checkpoint=-1):
     try:
         runs = os.listdir(root)
-        #TODO sort by date to handle change of month
-        # 按照字典序
-        runs.sort()
         if 'exported' in runs: runs.remove('exported')
+        # 按目录修改时间排序（最新的在最后）
+        runs.sort(key=lambda run: os.path.getmtime(os.path.join(root, run)))
         last_run = os.path.join(root, runs[-1])
     except:
         raise ValueError("No runs in this directory: " + root)

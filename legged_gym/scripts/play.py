@@ -51,6 +51,13 @@ def play(args):
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.push_robots = False
+    # 禁用所有新增域随机化（play 时不需要）
+    env_cfg.domain_rand.randomize_restitution = False
+    env_cfg.domain_rand.randomize_Kp = False
+    env_cfg.domain_rand.randomize_Kd = False
+    env_cfg.domain_rand.randomize_motor_torque = False
+    env_cfg.domain_rand.randomize_default_dof_pos = False
+    env_cfg.domain_rand.randomize_action_delay = False
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
@@ -153,7 +160,7 @@ def play(args):
                     'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
                     'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
                     'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy(),
-                    'base_height': env.root_states[robot_index, 2].item(),
+                    'base_height': env._get_com_height()[robot_index].item() if hasattr(env, '_get_com_height') else env.root_states[robot_index, 2].item(),
                     'base_height_target': env.cfg.rewards.base_height_target,
                     # ★ 新增：左右轮速度
                     'wheel_vel_left': env.dof_vel[robot_index, wl].item(),
@@ -167,6 +174,13 @@ def play(args):
                     'roll': torch.atan2(env.projected_gravity[robot_index, 1], -env.projected_gravity[robot_index, 2]).item(),
                     # ★ 新增：碰撞统计（逐body）
                     'collision_per_body': (torch.norm(env.contact_forces[robot_index, env.penalised_contact_indices, :], dim=-1) > 0.1).float().cpu().numpy(),
+                    # ★ 新增：所有电机力矩 (6个关节)
+                    'all_torques': env.torques[robot_index, :].cpu().numpy(),
+                    # ★ 新增：moonwalk 诊断 (左右腿角度 + r/l 分量)
+                    'thigh_left_pos': env.dof_pos[robot_index, 0].item(),
+                    'knee_left_pos': env.dof_pos[robot_index, 1].item(),
+                    'thigh_right_pos': env.dof_pos[robot_index, 3].item(),
+                    'knee_right_pos': env.dof_pos[robot_index, 4].item(),
                 }
             )
         elif i==stop_state_log:
