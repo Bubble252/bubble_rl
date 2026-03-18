@@ -27,9 +27,9 @@ class BubbleSkillCfg(BubbleFlatCfg):
 
     class terrain(BubbleFlatCfg.terrain):
         # Phase 3 + 地形: trimesh + curriculum
-        mesh_type = "plane"            # ← 平地训练
+        mesh_type = "trimesh"          # ← 启用地形训练
         measure_heights = False
-        curriculum = False
+        curriculum = True              # ← 从易到难
         max_init_terrain_level = 3
         add_perlin_noise = False
         perlin_zScale = 0.03
@@ -108,6 +108,7 @@ class BubbleSkillCfg(BubbleFlatCfg):
             encourage_jump = 2.0       # ← 跳跃奖励 (Diablo=1.5, Bubble保守)
             z_adjust_leg = -10.0       # ← 调腿惩罚: 仅 adjust_leg 模式下跟踪膝盖目标
             roll = -15.0               # ← 直接惩罚 roll 倾斜 (projected_gravity y²)
+            joint_symmetry = -10.0     # ← 惩罚左右关节角度不对称 (thigh_L+R, knee_L+R)
 
     class commands(BubbleFlatCfg.commands):
         curriculum = True              # ← 开启命令课程

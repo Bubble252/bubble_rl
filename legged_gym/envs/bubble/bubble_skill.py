@@ -169,6 +169,20 @@ class BubbleSkill(Bubble):
         """
         return torch.square(self.projected_gravity[:, 1])
 
+    def _reward_joint_symmetry(self):
+        """惩罚左右关节角度不对称
+        
+        Bubble 左右腿镜像: thigh_L + thigh_R ≈ 0, knee_L + knee_R ≈ 0
+        当两侧角度之和偏离0时惩罚。
+        
+        与 no_moonwalk 的区别:
+        - no_moonwalk: 惩罚 x 轴投影不对称 (前后摆动)
+        - joint_symmetry: 直接惩罚关节角度不对称 (更严格)
+        """
+        thigh_asym = torch.square(self.dof_pos[:, self.thigh_left_idx] + self.dof_pos[:, self.thigh_right_idx])
+        knee_asym = torch.square(self.dof_pos[:, self.knee_left_idx] + self.dof_pos[:, self.knee_right_idx])
+        return thigh_asym + knee_asym
+
     # ======================== 命令采样 ========================
 
     def _resample_commands(self, env_ids):
